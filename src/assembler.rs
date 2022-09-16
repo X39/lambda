@@ -1,6 +1,7 @@
 // Copyright x39
 
 mod token;
+mod parser;
 
 pub use self::token::Token;
 

@@ -4,13 +4,13 @@ use uuid::Uuid;
 use super::OpCode;
 
 pub struct Instruction {
-    opcode: OpCode,
+    pub opcode: OpCode,
+    pub arg: InstructionArg,
 }
 
-// TODO: Don't do this
 pub union InstructionArg {
-    unsigned: u16,
-    signed: i16,
+    pub unsigned: u16,
+    pub signed: i16,
 }
 
 pub struct VmPair {
@@ -18,15 +18,15 @@ pub struct VmPair {
     value: Option<VmValue>,
 }
 
-pub struct VmObject(Vec<VmValue>);
+pub struct VmObject(pub Vec<VmValue>);
 
-pub struct VmArray(Vec<Option<VmValue>>);
+pub struct VmArray(pub Vec<Option<VmValue>>);
 
-pub struct VmNumber(f64);
+pub struct VmNumber(pub f64);
 
-pub struct VmBoolean(bool);
+pub struct VmBoolean(pub bool);
 
-pub struct VmString(String);
+pub struct VmString(pub String);
 
 pub enum VmValue {
     String(VmString),

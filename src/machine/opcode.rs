@@ -4,7 +4,7 @@
 pub enum OpCode {
     /// no operation
     NoOp,
-    /// POP 0:string, POP 1:value and set a variable named 0 to value 1
+    /// POP 1:value, POP 0:string and set a variable named 0 to value 1
     Assign,
     /// POP 0:array, POP 1:value and append value 1 to array 0
     Append,
