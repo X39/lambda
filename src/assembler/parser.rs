@@ -1,56 +1,9 @@
 use std::{borrow::{Borrow, BorrowMut}, ops::Deref};
 
 use logos::Lexer;
+use pest::error;
 use crate::{Token, machine::{VmState, VmValue, VmString}};
 use crate::machine::{Instruction, InstructionArg, OpCode};
-
-enum Production
-{
-    FILE,
-    STATEMENTS,
-    STATEMENT,
-    S_AWAIT,
-    S_ABORT,
-    S_EXIT,
-    S_START,
-    AWAIT,
-    AWAIT_ANY,
-    AWAIT_ALL,
-    AWAIT_CALL_OR_IDENT,
-    CALL,
-    VALUE,
-    CONSTANT,
-    NUMERIC,
-    ARRAY,
-    ARRAY_DATA,
-    OBJ,
-    OBJ_DATA,
-    OBJ_PROP,
-    ABORT,
-    EXIT,
-    IF_ELSE,
-    IF,
-    IF_PART,
-    ELSE,
-    ELSE_PART,
-    CODE,
-    FOR,
-    FOR_VARIANT,
-    FOR_VALUE,
-    FOR_AWAIT_CALL,
-    FOR_AWAIT_IDENT,
-    FOR_IDENT,
-    ASSIGNMENT,
-    ASSIGNMENT_VALUE,
-    START,
-}
-
-struct ParseState<'a> {
-    is_good: bool,
-    errors: &'a Vec<ParseError<'a>>,
-    peekable: &'a std::iter::Peekable<Lexer<'a, Token>>,
-    vm: &'a VmState,
-}
 
 pub struct ParseError<'a> {
     message: &'a String,
@@ -66,30 +19,24 @@ pub fn parse(mut lexer: Lexer<Token>) -> Result<Vec<ProdStatement>, Vec<ParseErr
     let mut errors = Vec::new();
     let mut peekable = lexer.peekable();
 
-    let mut state = ParseState {
-        is_good: true,
-        errors: errors.borrow_mut(),
-        peekable: peekable.borrow_mut(),
-        vm: vm_state.borrow_mut(),
-    };
-    let result = prod_file(state.borrow_mut());
-    if state.errors.len() > 0 {
+    let result = prod_file(peekable.borrow_mut(), errors.borrow_mut());
+    if errors.len() > 0 {
         return Err(errors);
     }
     return Ok(result);
 }
 
-fn prod_file<'a>(mut parse_state: &ParseState<'a>) -> Vec<ProdStatement<'a>> {
-    match parse_state.peekable.peek() {
-        Some(_) => prod_statements(parse_state),
+fn prod_file<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Vec<ProdStatement<'a>> {
+    match peekable.peek() {
+        Some(_) => prod_statements(peekable, errors),
         None => Vec::new(),
     }
 }
 
-fn prod_statements<'a>(mut parse_state: &ParseState) -> Vec<ProdStatement<'a>> {
-    let vec = Vec::new();
-    while let Some(_) = parse_state.peekable.peek() {
-        let result = prod_statement(parse_state);
+fn prod_statements<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Vec<ProdStatement<'a>> {
+    let mut vec = Vec::new();
+    while let Some(_) = peekable.peek() {
+        let result = prod_statement(peekable, errors);
         if result.is_none() {
             return Vec::new();
         }
@@ -106,7 +53,7 @@ pub enum ProdStatement<'a> {
     ProdFor(ProdFor<'a>),
     ProdAssignment(ProdAssignment<'a>),
 }
-fn prod_statement<'a>(mut parse_state: &'a ParseState<'a>) -> Option<ProdStatement<'a>> {
+fn prod_statement<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdStatement<'a>> {
     enum Tmp<'a> {
         ProdAwait(Option<ProdAwait<'a>>),
         ProdAbort(Option<ProdAbort<'a>>),
@@ -116,16 +63,16 @@ fn prod_statement<'a>(mut parse_state: &'a ParseState<'a>) -> Option<ProdStateme
         ProdFor(Option<ProdFor<'a>>),
         ProdAssignment(Option<ProdAssignment<'a>>),
     }
-    let result = match parse_state.peekable.peek() {
-        Some(Token::Await) => Tmp::ProdAwait(prod_s_await(parse_state)),
-        Some(Token::Abort) => Tmp::ProdAbort(prod_s_abort(parse_state)),
-        Some(Token::Exit) => Tmp::ProdExit(prod_s_exit(parse_state)),
-        Some(Token::Start) => Tmp::ProdStart(prod_s_start(parse_state)),
-        Some(Token::If) => Tmp::ProdIfElse(prod_if_else(parse_state)),
-        Some(Token::For) => Tmp::ProdFor(prod_for(parse_state)),
-        Some(Token::Identifier(s)) => Tmp::ProdAssignment(prod_assignment(parse_state)),
+    let result = match peekable.peek() {
+        Some(Token::Await) => Tmp::ProdAwait(prod_s_await(peekable, errors)),
+        Some(Token::Abort) => Tmp::ProdAbort(prod_s_abort(peekable, errors)),
+        Some(Token::Exit) => Tmp::ProdExit(prod_s_exit(peekable, errors)),
+        Some(Token::Start) => Tmp::ProdStart(prod_s_start(peekable, errors)),
+        Some(Token::If) => Tmp::ProdIfElse(prod_if_else(peekable, errors)),
+        Some(Token::For) => Tmp::ProdFor(prod_for(peekable, errors)),
+        Some(Token::Identifier(s)) => Tmp::ProdAssignment(prod_assignment(peekable, errors)),
         None => panic!("statement reached none, indicating invalid program"),
-        _ => {error_token(parse_state); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
     return match result {
         Tmp::ProdAwait(optProdAwait) => match optProdAwait {
@@ -164,29 +111,29 @@ pub struct ProdAssignment<'a> {
     identifier: &'a String,
     value: ProdAssignmentValue<'a>,
 }
-fn prod_assignment<'a>(mut parse_state: &ParseState) -> Option<ProdAssignment<'a>> {
-    let ident = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
+fn prod_assignment<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAssignment<'a>> {
+    let ident = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
-    match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
+        None => {error_eof(peekable, errors); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
-    let assignment = match parse_state.peekable.peek() {
-        Some(Token::Await) => prod_assignment_value(parse_state),
-        Some(Token::CurlyOpen) => prod_assignment_value(parse_state),
-        Some(Token::False) => prod_assignment_value(parse_state),
-        Some(Token::True) => prod_assignment_value(parse_state),
-        Some(Token::Null) => prod_assignment_value(parse_state),
-        Some(Token::Number(d)) => prod_assignment_value(parse_state),
-        Some(Token::SquareOpen) => prod_assignment_value(parse_state),
-        Some(Token::Start) => prod_assignment_value(parse_state),
-        Some(Token::String(s)) => prod_assignment_value(parse_state),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let assignment = match peekable.peek() {
+        Some(Token::Await) => prod_assignment_value(peekable, errors),
+        Some(Token::CurlyOpen) => prod_assignment_value(peekable, errors),
+        Some(Token::False) => prod_assignment_value(peekable, errors),
+        Some(Token::True) => prod_assignment_value(peekable, errors),
+        Some(Token::Null) => prod_assignment_value(peekable, errors),
+        Some(Token::Number(d)) => prod_assignment_value(peekable, errors),
+        Some(Token::SquareOpen) => prod_assignment_value(peekable, errors),
+        Some(Token::Start) => prod_assignment_value(peekable, errors),
+        Some(Token::String(s)) => prod_assignment_value(peekable, errors),
+        None => {error_eof(peekable, errors); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
     if assignment.is_none() {
         return None;
@@ -203,24 +150,24 @@ pub enum ProdAssignmentValue<'a> {
     ProdValue(ProdValue<'a>),
     ProdStart(ProdStart<'a>),
 }
-fn prod_assignment_value<'a>(mut parse_state: &ParseState) -> Option<ProdAssignmentValue<'a>> {
+fn prod_assignment_value<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAssignmentValue<'a>> {
     enum Tmp<'a> {
         ProdAwait(Option<ProdAwait<'a>>),
         ProdValue(Option<ProdValue<'a>>),
         ProdStart(Option<ProdStart<'a>>),
     }
-    let tmp = match parse_state.peekable.peek() {
-        Some(Token::Await) => Tmp::ProdAwait(prod_await(parse_state)),
-        Some(Token::Start) => Tmp::ProdStart(prod_start(parse_state)),
-        Some(Token::CurlyOpen) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::False) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::True) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::Null) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::Number(d)) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::SquareOpen) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::String(s)) => Tmp::ProdValue(prod_value(parse_state)),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let tmp = match peekable.peek() {
+        Some(Token::Await) => Tmp::ProdAwait(prod_await(peekable, errors)),
+        Some(Token::Start) => Tmp::ProdStart(prod_start(peekable, errors)),
+        Some(Token::CurlyOpen) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::False) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::True) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::Null) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::Number(d)) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::SquareOpen) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::String(s)) => Tmp::ProdValue(prod_value(peekable, errors)),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     match tmp {
         Tmp::ProdAwait(optProdAwait) => match optProdAwait {
@@ -241,16 +188,16 @@ fn prod_assignment_value<'a>(mut parse_state: &ParseState) -> Option<ProdAssignm
 pub enum ProdStart<'a> {
     ProdCall(ProdCall<'a>),
 }
-fn prod_start<'a>(mut parse_state: &ParseState) -> Option<ProdStart<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::Start) => {parse_state.peekable.next();},
+fn prod_start<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdStart<'a>> {
+    match peekable.peek() {
+        Some(Token::Start) => {peekable.next();},
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let call = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => prod_call(parse_state),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let call = match peekable.peek() {
+        Some(Token::Identifier(s)) => prod_call(peekable, errors),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if call.is_none() {
         return None;
@@ -262,35 +209,35 @@ pub struct ProdCall<'a> {
     ident: &'a String,
     value: ProdValue<'a>,
 }
-fn prod_call<'a>(mut parse_state: &ParseState) -> Option<ProdCall<'a>> {
-    let ident = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
+fn prod_call<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdCall<'a>> {
+    let ident = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
         None => panic!("Invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    match parse_state.peekable.peek() {
-        Some(Token::RoundOpen) => parse_state.peekable.next(),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::RoundOpen) => peekable.next(),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let value = match parse_state.peekable.peek() {
-        Some(Token::CurlyOpen) => prod_value(parse_state),
-        Some(Token::False) => prod_value(parse_state),
-        Some(Token::True) => prod_value(parse_state),
-        Some(Token::Null) => prod_value(parse_state),
-        Some(Token::Number(d)) => prod_value(parse_state),
-        Some(Token::SquareOpen) => prod_value(parse_state),
-        Some(Token::String(s)) => prod_value(parse_state),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let value = match peekable.peek() {
+        Some(Token::CurlyOpen) => prod_value(peekable, errors),
+        Some(Token::False) => prod_value(peekable, errors),
+        Some(Token::True) => prod_value(peekable, errors),
+        Some(Token::Null) => prod_value(peekable, errors),
+        Some(Token::Number(d)) => prod_value(peekable, errors),
+        Some(Token::SquareOpen) => prod_value(peekable, errors),
+        Some(Token::String(s)) => prod_value(peekable, errors),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if value.is_none() {
         return None;
     }
-    match parse_state.peekable.peek() {
-        Some(Token::RoundClose) => parse_state.peekable.next(),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::RoundClose) => peekable.next(),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdCall {
         ident: ident,
@@ -304,23 +251,23 @@ pub enum ProdValue<'a> {
     ProdNumeric(ProdNumeric),
     ProdConstant(ProdConstant<'a>),
 }
-fn prod_value<'a>(mut parse_state: &ParseState) -> Option<ProdValue<'a>> {
+fn prod_value<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdValue<'a>> {
     enum Tmp<'a> {
         ProdObj(Option<ProdObj<'a>>),
         ProdArray(Option<ProdArray<'a>>),
         ProdNumeric(Option<ProdNumeric>),
         ProdConstant(Option<ProdConstant<'a>>),
     }
-    let value = match parse_state.peekable.peek() {
-        Some(Token::CurlyOpen) => Tmp::ProdObj(prod_obj(parse_state)),
-        Some(Token::False) => Tmp::ProdConstant(prod_constant(parse_state)),
-        Some(Token::True) => Tmp::ProdConstant(prod_constant(parse_state)),
-        Some(Token::Null) => Tmp::ProdConstant(prod_constant(parse_state)),
-        Some(Token::Number(d)) => Tmp::ProdNumeric(prod_numeric(parse_state)),
-        Some(Token::SquareOpen) => Tmp::ProdArray(prod_array(parse_state)),
-        Some(Token::String(s)) => Tmp::ProdConstant(prod_constant(parse_state)),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let value = match peekable.peek() {
+        Some(Token::CurlyOpen) => Tmp::ProdObj(prod_obj(peekable, errors)),
+        Some(Token::False) => Tmp::ProdConstant(prod_constant(peekable, errors)),
+        Some(Token::True) => Tmp::ProdConstant(prod_constant(peekable, errors)),
+        Some(Token::Null) => Tmp::ProdConstant(prod_constant(peekable, errors)),
+        Some(Token::Number(d)) => Tmp::ProdNumeric(prod_numeric(peekable, errors)),
+        Some(Token::SquareOpen) => Tmp::ProdArray(prod_array(peekable, errors)),
+        Some(Token::String(s)) => Tmp::ProdConstant(prod_constant(peekable, errors)),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     match value {
         Tmp::ProdObj(optObj) => match optObj {
@@ -346,34 +293,34 @@ fn prod_value<'a>(mut parse_state: &ParseState) -> Option<ProdValue<'a>> {
 pub struct ProdArray<'a> {
     values: Vec<ProdArrayDataEnum<'a>>,
 }
-fn prod_array<'a>(mut parse_state: &ParseState) -> Option<ProdArray<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::SquareOpen) => parse_state.peekable.next(),
+fn prod_array<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdArray<'a>> {
+    match peekable.peek() {
+        Some(Token::SquareOpen) => peekable.next(),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let arrayData = match parse_state.peekable.peek() {
+    let arrayData = match peekable.peek() {
         Some(Token::SquareClose) => return Some(ProdArray {
             values: Vec::new(),
         }),
-        Some(Token::Identifier(s)) => prod_array_data(parse_state),
-        Some(Token::Null) => prod_array_data(parse_state),
-        Some(Token::False) => prod_array_data(parse_state),
-        Some(Token::True) => prod_array_data(parse_state),
-        Some(Token::String(s)) => prod_array_data(parse_state),
-        Some(Token::Number(d)) => prod_array_data(parse_state),
-        Some(Token::SquareOpen) => prod_array_data(parse_state),
-        Some(Token::CurlyOpen) => prod_array_data(parse_state),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+        Some(Token::Identifier(s)) => prod_array_data(peekable, errors),
+        Some(Token::Null) => prod_array_data(peekable, errors),
+        Some(Token::False) => prod_array_data(peekable, errors),
+        Some(Token::True) => prod_array_data(peekable, errors),
+        Some(Token::String(s)) => prod_array_data(peekable, errors),
+        Some(Token::Number(d)) => prod_array_data(peekable, errors),
+        Some(Token::SquareOpen) => prod_array_data(peekable, errors),
+        Some(Token::CurlyOpen) => prod_array_data(peekable, errors),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if arrayData.is_none() {
         return None;
     }
-    match parse_state.peekable.peek() {
+    match peekable.peek() {
         Some(Token::SquareClose) => {}
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdArray {
         values: arrayData.unwrap().values
@@ -387,22 +334,22 @@ pub enum ProdArrayDataEnum<'a> {
     Identifier(&'a String),
     ProdValue(ProdValue<'a>),
 }
-fn prod_array_data<'a>(mut parse_state: &ParseState) -> Option<ProdArrayData<'a>> {
+fn prod_array_data<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdArrayData<'a>> {
     enum Tmp<'a> {
         Identifier(&'a String),
         ProdValue(Option<ProdValue<'a>>),
     }
-    let tmp = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); Tmp::Identifier(s)},
-        Some(Token::String(s)) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::Null) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::False) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::True) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::Number(d)) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::SquareOpen) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::CurlyOpen) => Tmp::ProdValue(prod_value(parse_state)),
+    let tmp = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); Tmp::Identifier(s)},
+        Some(Token::String(s)) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::Null) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::False) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::True) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::Number(d)) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::SquareOpen) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::CurlyOpen) => Tmp::ProdValue(prod_value(peekable, errors)),
         None => panic!("Invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if match tmp {
         Tmp::Identifier(_) => false,
@@ -411,7 +358,7 @@ fn prod_array_data<'a>(mut parse_state: &ParseState) -> Option<ProdArrayData<'a>
     } {
         return None;
     }
-    match parse_state.peekable.peek() {
+    match peekable.peek() {
         Some(Token::Comma) => {},
         _ => {
             let vec: Vec<ProdArrayDataEnum> = Vec::new();
@@ -425,15 +372,15 @@ fn prod_array_data<'a>(mut parse_state: &ParseState) -> Option<ProdArrayData<'a>
             });
         },
     };
-    let prodArrData = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => prod_array_data(parse_state),
-        Some(Token::String(s)) => prod_array_data(parse_state),
-        Some(Token::Null) => prod_array_data(parse_state),
-        Some(Token::False) => prod_array_data(parse_state),
-        Some(Token::True) => prod_array_data(parse_state),
-        Some(Token::Number(d)) => prod_array_data(parse_state),
-        Some(Token::SquareOpen) => prod_array_data(parse_state),
-        Some(Token::CurlyOpen) => prod_array_data(parse_state),
+    let prodArrData = match peekable.peek() {
+        Some(Token::Identifier(s)) => prod_array_data(peekable, errors),
+        Some(Token::String(s)) => prod_array_data(peekable, errors),
+        Some(Token::Null) => prod_array_data(peekable, errors),
+        Some(Token::False) => prod_array_data(peekable, errors),
+        Some(Token::True) => prod_array_data(peekable, errors),
+        Some(Token::Number(d)) => prod_array_data(peekable, errors),
+        Some(Token::SquareOpen) => prod_array_data(peekable, errors),
+        Some(Token::CurlyOpen) => prod_array_data(peekable, errors),
         None => {
             let vec: Vec<ProdArrayDataEnum> = Vec::new();
             vec.push(match tmp {
@@ -445,7 +392,7 @@ fn prod_array_data<'a>(mut parse_state: &ParseState) -> Option<ProdArrayData<'a>
                 values: vec,
             });
         },
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if prodArrData.is_none() {
         return None;
@@ -468,16 +415,16 @@ pub struct ProdNumeric {
     value: f64,
     end: Option<f64>,
 }
-fn prod_numeric(mut parse_state: &ParseState) -> Option<ProdNumeric> {
-    let start = *match parse_state.peekable.peek() {
-        Some(Token::Number(d)) => {parse_state.peekable.next(); d},
+fn prod_numeric<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdNumeric> {
+    let start = *match peekable.peek() {
+        Some(Token::Number(d)) => {peekable.next(); d},
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
 
-    match parse_state.peekable.peek() {
-        Some(Token::DotDot) => parse_state.peekable.next(),
-        None => {error_eof(parse_state); return None},
+    match peekable.peek() {
+        Some(Token::DotDot) => peekable.next(),
+        None => {error_eof(peekable, errors); return None},
         tok => {return Some(ProdNumeric {
              value: start,
              end: None
@@ -485,10 +432,10 @@ fn prod_numeric(mut parse_state: &ParseState) -> Option<ProdNumeric> {
         },
     };
     
-    let end = *match parse_state.peekable.peek() {
-        Some(Token::Number(d)) => {parse_state.peekable.next(); d},
+    let end = *match peekable.peek() {
+        Some(Token::Number(d)) => {peekable.next(); d},
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdNumeric {
         value: start,
@@ -501,15 +448,15 @@ pub enum ProdConstant<'a> {
     Boolean(bool),
     String(&'a String),
 }
-fn prod_constant<'a>(mut parse_state: &ParseState) -> Option<ProdConstant<'a>> {
+fn prod_constant<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdConstant<'a>> {
     // null | string | true | false
-    let value = match parse_state.peekable.peek() {
+    let value = match peekable.peek() {
         Some(Token::Null) => ProdConstant::Null,
-        Some(Token::String(s)) => {parse_state.peekable.next(); ProdConstant::String(s)},
-        Some(Token::True) => {parse_state.peekable.next(); ProdConstant::Boolean(false)},
-        Some(Token::False) => {parse_state.peekable.next(); ProdConstant::Boolean(false)},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+        Some(Token::String(s)) => {peekable.next(); ProdConstant::String(s)},
+        Some(Token::True) => {peekable.next(); ProdConstant::Boolean(false)},
+        Some(Token::False) => {peekable.next(); ProdConstant::Boolean(false)},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(value);
 }
@@ -517,27 +464,27 @@ fn prod_constant<'a>(mut parse_state: &ParseState) -> Option<ProdConstant<'a>> {
 pub struct ProdObj<'a> {
     properties: Vec<ProdObjProp<'a>>,
 }
-fn prod_obj<'a>(mut parse_state: &ParseState) -> Option<ProdObj<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::CurlyOpen) => parse_state.peekable.next(),
+fn prod_obj<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdObj<'a>> {
+    match peekable.peek() {
+        Some(Token::CurlyOpen) => peekable.next(),
         None => panic!("statement reached none, indicating invalid program"),
-        _ => {error_token(parse_state); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
-    let objData = match parse_state.peekable.peek() {
+    let objData = match peekable.peek() {
         Some(Token::CurlyClose) => return Some(ProdObj {
             properties: Vec::new(),
         }),
-        Some(Token::String(s)) => prod_obj_data(parse_state),
-        None => {error_eof(parse_state); return None;},
-        _ => {error_token(parse_state); return None;},
+        Some(Token::String(s)) => prod_obj_data(peekable, errors),
+        None => {error_eof(peekable, errors); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
     if objData.is_none() {
         return None;
     }
-    match parse_state.peekable.peek() {
+    match peekable.peek() {
         Some(Token::CurlyClose) => {}
-        None => {error_eof(parse_state); return None;},
-        _ => {error_token(parse_state); return None;},
+        None => {error_eof(peekable, errors); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
     return Some(ProdObj {
          properties: objData.unwrap().properties
@@ -547,16 +494,16 @@ fn prod_obj<'a>(mut parse_state: &ParseState) -> Option<ProdObj<'a>> {
 pub struct ProdObjData<'a> {
     properties: Vec<ProdObjProp<'a>>,
 }
-fn prod_obj_data<'a>(mut parse_state: &ParseState) -> Option<ProdObjData<'a>> {
-    let prodObjProp = match parse_state.peekable.peek() {
-        Some(Token::String(s)) => prod_obj_prop(parse_state),
+fn prod_obj_data<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdObjData<'a>> {
+    let prodObjProp = match peekable.peek() {
+        Some(Token::String(s)) => prod_obj_prop(peekable, errors),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if prodObjProp.is_none() {
         return None;
     }
-    match parse_state.peekable.peek() {
+    match peekable.peek() {
         Some(Token::Comma) => {},
         None => {
             let vec: Vec<ProdObjProp> = Vec::new();
@@ -565,10 +512,10 @@ fn prod_obj_data<'a>(mut parse_state: &ParseState) -> Option<ProdObjData<'a>> {
                 properties: vec,
             });
         },
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let prodObjData = match parse_state.peekable.peek() {
-        Some(Token::String(s)) => prod_obj_data(parse_state),
+    let prodObjData = match peekable.peek() {
+        Some(Token::String(s)) => prod_obj_data(peekable, errors),
         None => {
             let vec: Vec<ProdObjProp> = Vec::new();
             vec.push(prodObjProp.unwrap());
@@ -576,7 +523,7 @@ fn prod_obj_data<'a>(mut parse_state: &ParseState) -> Option<ProdObjData<'a>> {
                 properties: vec,
             });
         },
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if prodObjData.is_none() {
         return None;
@@ -599,32 +546,32 @@ pub enum ProdObjPropData<'a> {
     String(&'a String),
     ProdValue(ProdValue<'a>),
 }
-fn prod_obj_prop<'a>(mut parse_state: &ParseState) -> Option<ProdObjProp<'a>> {
+fn prod_obj_prop<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdObjProp<'a>> {
     enum Tmp<'a> {
         String(&'a String),
         ProdValue(Option<ProdValue<'a>>),
     }
-    let label = match parse_state.peekable.peek() {
-        Some(Token::String(s)) => {parse_state.peekable.next(); s},
+    let label = match peekable.peek() {
+        Some(Token::String(s)) => {peekable.next(); s},
         None => panic!("Invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    match parse_state.peekable.peek() {
-        Some(Token::Colon) => parse_state.peekable.next(),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Colon) => peekable.next(),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let value = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); Tmp::String(s)},
-        Some(Token::False) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::False) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::True) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::Null) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::Number(d)) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::SquareOpen) => Tmp::ProdValue(prod_value(parse_state)),
-        Some(Token::String(s)) => Tmp::ProdValue(prod_value(parse_state)),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let value = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); Tmp::String(s)},
+        Some(Token::False) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::False) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::True) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::Null) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::Number(d)) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::SquareOpen) => Tmp::ProdValue(prod_value(peekable, errors)),
+        Some(Token::String(s)) => Tmp::ProdValue(prod_value(peekable, errors)),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     match value {
         Tmp::String(string) => return Some(ProdObjProp {
@@ -642,70 +589,70 @@ fn prod_obj_prop<'a>(mut parse_state: &ParseState) -> Option<ProdObjProp<'a>> {
     }
 }
 
-fn prod_s_exit(mut parse_state: &ParseState) -> Option<ProdExit> {
-    let val = match parse_state.peekable.peek() {
-        Some(Token::Exit) => prod_exit(parse_state),
+fn prod_s_exit<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdExit> {
+    let val = match peekable.peek() {
+        Some(Token::Exit) => prod_exit(peekable, errors),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if val.is_none(){
         return None;
     }
-    match parse_state.peekable.peek() {
-        Some(Token::Semicolon) => {let _ = parse_state.peekable.next();},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Semicolon) => {let _ = peekable.next();},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     }
     return val;
 }
 
-fn prod_s_start<'a>(mut parse_state: &ParseState) -> Option<ProdStart<'a>> {
-    let val = match parse_state.peekable.peek() {
-        Some(Token::Start) => prod_start(parse_state),
+fn prod_s_start<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdStart<'a>> {
+    let val = match peekable.peek() {
+        Some(Token::Start) => prod_start(peekable, errors),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if val.is_none(){
         return None;
     }
-    match parse_state.peekable.peek() {
-        Some(Token::Semicolon) => {let _ = parse_state.peekable.next();},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Semicolon) => {let _ = peekable.next();},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return val;
 }
 
-fn prod_s_await<'a>(mut parse_state: &ParseState) -> Option<ProdAwait<'a>> {
-    let val = match parse_state.peekable.peek() {
-        Some(Token::Await) => prod_await(parse_state),
+fn prod_s_await<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwait<'a>> {
+    let val = match peekable.peek() {
+        Some(Token::Await) => prod_await(peekable, errors),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if val.is_none(){
         return None;
     }
-    match parse_state.peekable.peek() {
-        Some(Token::Semicolon) => {let _ = parse_state.peekable.next();},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Semicolon) => {let _ = peekable.next();},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return val;
 }
 
-fn prod_s_abort<'a>(mut parse_state: &ParseState) -> Option<ProdAbort<'a>> {
-    let val = match parse_state.peekable.peek() {
-        Some(Token::Abort) => prod_abort(parse_state),
+fn prod_s_abort<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAbort<'a>> {
+    let val = match peekable.peek() {
+        Some(Token::Abort) => prod_abort(peekable, errors),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     if val.is_none(){
         return None;
     }
-    match parse_state.peekable.peek() {
-        Some(Token::Semicolon) => {let _ = parse_state.peekable.next();},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Semicolon) => {let _ = peekable.next();},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     }
     return val;
 }
@@ -713,16 +660,16 @@ fn prod_s_abort<'a>(mut parse_state: &ParseState) -> Option<ProdAbort<'a>> {
 pub struct ProdExit {
 
 }
-fn prod_exit(mut parse_state: &ParseState) -> Option<ProdExit> {
-    match parse_state.peekable.peek() {
-        Some(Token::Exit) => prod_abort(parse_state),
+fn prod_exit<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdExit> {
+    match peekable.peek() {
+        Some(Token::Exit) => prod_abort(peekable, errors),
         None => panic!("Invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    match parse_state.peekable.peek() {
-        Some(Token::Semicolon) => _ = parse_state.peekable.next(),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::Semicolon) => _ = peekable.next(),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdExit {  });
 }
@@ -732,23 +679,23 @@ pub enum ProdAwait<'a> {
     ProdAwaitAll(ProdAwaitAll<'a>),
     ProdAwaitCallOrIdent(ProdAwaitCallOrIdent<'a>),
 }
-fn prod_await<'a>(mut parse_state: &ParseState) -> Option<ProdAwait<'a>>{
+fn prod_await<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwait<'a>>{
     enum Tmp<'a> {
         ProdAwaitAny(Option<ProdAwaitAny<'a>>),
         ProdAwaitAll(Option<ProdAwaitAll<'a>>),
         ProdAwaitCallOrIdent(Option<ProdAwaitCallOrIdent<'a>>),
     }
-    match parse_state.peekable.peek() {
-        Some(Token::Await) => _ = parse_state.peekable.next(),
+    match peekable.peek() {
+        Some(Token::Await) => _ = peekable.next(),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => error_token(parse_state),
+        tok => error_token(peekable, errors),
     }
-    let tmp = match parse_state.peekable.peek() {
-        Some(Token::All) => Tmp::ProdAwaitAll(prod_await_all(parse_state)),
-        Some(Token::Any) => Tmp::ProdAwaitAny(prod_await_any(parse_state)),
-        Some(Token::Identifier(s)) => Tmp::ProdAwaitCallOrIdent(prod_await_call_or_ident(parse_state)),
+    let tmp = match peekable.peek() {
+        Some(Token::All) => Tmp::ProdAwaitAll(prod_await_all(peekable, errors)),
+        Some(Token::Any) => Tmp::ProdAwaitAny(prod_await_any(peekable, errors)),
+        Some(Token::Identifier(s)) => Tmp::ProdAwaitCallOrIdent(prod_await_call_or_ident(peekable, errors)),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None},
+        tok => {error_token(peekable, errors); return None},
     };
     match tmp {
         Tmp::ProdAwaitAny(optProdAwaitAny) => match optProdAwaitAny {
@@ -769,11 +716,11 @@ fn prod_await<'a>(mut parse_state: &ParseState) -> Option<ProdAwait<'a>>{
 pub struct ProdAwaitAll<'a> {
     identifier: &'a String,
 }
-fn prod_await_all<'a>(mut parse_state: &ParseState) -> Option<ProdAwaitAll<'a>> {
-    let identifier = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
+fn prod_await_all<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwaitAll<'a>> {
+    let identifier = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
         None => panic!("Invalid program."),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdAwaitAll {
         identifier: identifier,
@@ -783,11 +730,11 @@ fn prod_await_all<'a>(mut parse_state: &ParseState) -> Option<ProdAwaitAll<'a>> 
 pub struct ProdAwaitAny<'a> {
     identifier: &'a String,
 }
-fn prod_await_any<'a>(mut parse_state: &ParseState) -> Option<ProdAwaitAny<'a>> {
-    let identifier = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
+fn prod_await_any<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwaitAny<'a>> {
+    let identifier = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
         None => panic!("Invalid program."),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdAwaitAny {
         identifier: identifier,
@@ -798,15 +745,15 @@ pub struct ProdAwaitCallOrIdent<'a> {
     value: Option<ProdValue<'a>>,
     is_func: bool,
 }
-fn prod_await_call_or_ident<'a>(mut parse_state: &ParseState) -> Option<ProdAwaitCallOrIdent<'a>> {
-    let identifier = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
+fn prod_await_call_or_ident<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwaitCallOrIdent<'a>> {
+    let identifier = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
         None => panic!("Invalid program."),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    match parse_state.peekable.peek() {
-        Some(Token::RoundOpen) => _ = parse_state.peekable.next(),
-        None => error_eof(parse_state),
+    match peekable.peek() {
+        Some(Token::RoundOpen) => _ = peekable.next(),
+        None => error_eof(peekable, errors),
         tok => return Some(ProdAwaitCallOrIdent {
             identifier: identifier,
             value: None,
@@ -814,22 +761,22 @@ fn prod_await_call_or_ident<'a>(mut parse_state: &ParseState) -> Option<ProdAwai
         }),
     };
     let mut is_hit = false;
-    let value: Option<ProdValue> = match parse_state.peekable.peek() {
+    let value: Option<ProdValue> = match peekable.peek() {
         Some(Token::RoundClose) => { is_hit = true; None },
-        Some(Token::CurlyOpen) => prod_value(parse_state),
-        Some(Token::SquareOpen) => prod_value(parse_state),
-        Some(Token::Number(d)) => prod_value(parse_state),
-        Some(Token::Null) => prod_value(parse_state),
-        Some(Token::String(s)) => prod_value(parse_state),
-        Some(Token::True) => prod_value(parse_state),
-        Some(Token::False) => prod_value(parse_state),
-        None => {error_eof(parse_state); return None},
-        tok => {error_token(parse_state); return None},
+        Some(Token::CurlyOpen) => prod_value(peekable, errors),
+        Some(Token::SquareOpen) => prod_value(peekable, errors),
+        Some(Token::Number(d)) => prod_value(peekable, errors),
+        Some(Token::Null) => prod_value(peekable, errors),
+        Some(Token::String(s)) => prod_value(peekable, errors),
+        Some(Token::True) => prod_value(peekable, errors),
+        Some(Token::False) => prod_value(peekable, errors),
+        None => {error_eof(peekable, errors); return None},
+        tok => {error_token(peekable, errors); return None},
     };
-    match parse_state.peekable.peek() {
+    match peekable.peek() {
         Some(Token::RoundClose) => {},
-        None => {error_eof(parse_state); return None},
-        tok => {error_token(parse_state); return None},
+        None => {error_eof(peekable, errors); return None},
+        tok => {error_token(peekable, errors); return None},
     };
     return Some(ProdAwaitCallOrIdent {
         identifier: identifier,
@@ -841,11 +788,11 @@ fn prod_await_call_or_ident<'a>(mut parse_state: &ParseState) -> Option<ProdAwai
 pub struct ProdAbort<'a> {
     identifier: &'a String,
 }
-fn prod_abort<'a>(mut parse_state: &ParseState) -> Option<ProdAbort<'a>> {
-    let identifier = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
+fn prod_abort<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAbort<'a>> {
+    let identifier = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
         None => panic!("Invalid program."),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
     return Some(ProdAbort {
         identifier: identifier,
@@ -857,27 +804,27 @@ pub struct ProdFor<'a> {
     variant: ProdForVariant<'a>,
     code: ProdCode<'a>,
 }
-fn prod_for<'a>(mut parse_state: &ParseState) -> Option<ProdFor<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::For) => parse_state.peekable.next(),
+fn prod_for<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdFor<'a>> {
+    match peekable.peek() {
+        Some(Token::For) => peekable.next(),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let ident = match parse_state.peekable.peek() {
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); s},
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    let ident = match peekable.peek() {
+        Some(Token::Identifier(s)) => {peekable.next(); s},
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    match parse_state.peekable.peek() {
-        Some(Token::In) => parse_state.peekable.next(),
-        None => {error_eof(parse_state); return None;},
-        tok => {error_token(parse_state); return None;},
+    match peekable.peek() {
+        Some(Token::In) => peekable.next(),
+        None => {error_eof(peekable, errors); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let prodForVariant = prod_for_variant(parse_state);
+    let prodForVariant = prod_for_variant(peekable, errors);
     if prodForVariant.is_none() {
         return None;
     }
-    let prodCode = prod_code(parse_state);
+    let prodCode = prod_code(peekable, errors);
     if prodCode.is_none() {
         return None;
     }
@@ -893,18 +840,18 @@ pub enum ProdForVariant<'a> {
     String(&'a String),
     ProdArray(ProdArray<'a>),
 }
-fn prod_for_variant<'a>(mut parse_state: &ParseState) -> Option<ProdForVariant<'a>> {
+fn prod_for_variant<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdForVariant<'a>> {
     enum Tmp<'a> {
         ProdAwaitCallOrIdent(Option<ProdAwaitCallOrIdent<'a>>),
         String(&'a String),
         ProdArray(Option<ProdArray<'a>>),
     }
-    let result = match parse_state.peekable.peek() {
-        Some(Token::Await) => Tmp::ProdAwaitCallOrIdent(prod_for_variant_await(parse_state)),
-        Some(Token::SquareOpen) => Tmp::ProdArray(prod_array(parse_state)),
+    let result = match peekable.peek() {
+        Some(Token::Await) => Tmp::ProdAwaitCallOrIdent(prod_for_variant_await(peekable, errors)),
+        Some(Token::SquareOpen) => Tmp::ProdArray(prod_array(peekable, errors)),
         Some(Token::Identifier(s)) => Tmp::String(s),
         None => panic!("statement reached none, indicating invalid program"),
-        _ => {error_token(parse_state); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
     return match result {
         Tmp::ProdAwaitCallOrIdent(optProdAwait) => match optProdAwait {
@@ -920,28 +867,28 @@ fn prod_for_variant<'a>(mut parse_state: &ParseState) -> Option<ProdForVariant<'
     };
 }
 
-fn prod_for_variant_await<'a>(mut parse_state: &ParseState) -> Option<ProdAwaitCallOrIdent<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::Await) => parse_state.peekable.next(),
+fn prod_for_variant_await<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwaitCallOrIdent<'a>> {
+    match peekable.peek() {
+        Some(Token::Await) => peekable.next(),
         None => panic!("statement reached none, indicating invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    return prod_await_call_or_ident(parse_state);
+    return prod_await_call_or_ident(peekable, errors);
 }
 
 pub struct ProdIfElse<'a> {
     prodIf: ProdIf<'a>,
     prodElse: Option<ProdCode<'a>>,
 }
-fn prod_if_else<'a>(mut parse_state: &ParseState) -> Option<ProdIfElse<'a>> {
-    let prodIf = match parse_state.peekable.peek() {
-        Some(Token::If) => prod_if(parse_state),
+fn prod_if_else<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdIfElse<'a>> {
+    let prodIf = match peekable.peek() {
+        Some(Token::If) => prod_if(peekable, errors),
         None => panic!("Invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    let prodCode = match parse_state.peekable.peek() {
-        Some(Token::Else) => prod_else(parse_state),
-        None => {error_eof(parse_state); return None;},
+    let prodCode = match peekable.peek() {
+        Some(Token::Else) => prod_else(peekable, errors),
+        None => {error_eof(peekable, errors); return None;},
         tok => None,
     }; 
     return Some(ProdIfElse {
@@ -950,13 +897,13 @@ fn prod_if_else<'a>(mut parse_state: &ParseState) -> Option<ProdIfElse<'a>> {
     });
 }
 
-fn prod_if<'a>(mut parse_state: &ParseState) -> Option<ProdIf<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::If) => parse_state.peekable.next(),
+fn prod_if<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdIf<'a>> {
+    match peekable.peek() {
+        Some(Token::If) => peekable.next(),
         None => panic!("Invalid program"),
-        tok => {error_token(parse_state); return None;},
+        tok => {error_token(peekable, errors); return None;},
     };
-    return prod_if_part(parse_state);
+    return prod_if_part(peekable, errors);
 }
 
 pub struct ProdIf<'a> {
@@ -967,18 +914,18 @@ pub enum ProdIfPartCondition<'a> {
     Identifier(&'a String),
     ProdAwaitCallOrIdent(ProdAwaitCallOrIdent<'a>),
 }
-fn prod_if_part<'a>(mut parse_state: &ParseState) -> Option<ProdIf<'a>> {
+fn prod_if_part<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdIf<'a>> {
     enum Tmp<'a> {
         Identifer(&'a String),
         ProdAwaitCallOrIdent(Option<ProdAwaitCallOrIdent<'a>>),
     }
-    let tmp = match parse_state.peekable.peek() {
-        Some(Token::Await) => Tmp::ProdAwaitCallOrIdent(prod_if_part_await(parse_state)),
-        Some(Token::Identifier(s)) => {parse_state.peekable.next(); Tmp::Identifer(s)},
+    let tmp = match peekable.peek() {
+        Some(Token::Await) => Tmp::ProdAwaitCallOrIdent(prod_if_part_await(peekable, errors)),
+        Some(Token::Identifier(s)) => {peekable.next(); Tmp::Identifer(s)},
         None => panic!("Invalid program"),
-        _ => {error_token(parse_state); return None;},
+        _ => {error_token(peekable, errors); return None;},
     };
-    let code = prod_code(parse_state);
+    let code = prod_code(peekable, errors);
     return Some(ProdIf {
         condition: match tmp {
             Tmp::Identifer(s) => ProdIfPartCondition::Identifier(s),
@@ -994,40 +941,37 @@ fn prod_if_part<'a>(mut parse_state: &ParseState) -> Option<ProdIf<'a>> {
     });
 }
 
-fn prod_if_part_await<'a>(mut parse_state: &ParseState) -> Option<ProdAwaitCallOrIdent<'a>> {
-    match parse_state.peekable.peek() {
-        Some(Token::Await) => parse_state.peekable.next(),
-        _ => {error_token(parse_state); return None;},
+fn prod_if_part_await<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdAwaitCallOrIdent<'a>> {
+    match peekable.peek() {
+        Some(Token::Await) => peekable.next(),
+        _ => {error_token(peekable, errors); return None;},
     };
-    return prod_await_call_or_ident(parse_state);
+    return prod_await_call_or_ident(peekable, errors);
 }
 
-fn prod_else<'a>(mut parse_state: &ParseState) -> Option<ProdCode<'a>> {
+fn prod_else<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdCode<'a>> {
     todo!()
 }
 
 struct ProdCode<'a> {
     toRemove: &'a String,
 }
-fn prod_code<'a>(mut parse_state: &ParseState) -> Option<ProdCode<'a>> {
+fn prod_code<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) -> Option<ProdCode<'a>> {
     todo!()
 }
 
-fn error_token(mut parse_state: &ParseState) {
-    parse_state.is_good = false;
-    parse_state.errors.push(ParseError {
+fn error_token<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) {
+    errors.push(ParseError {
         message: "Unmatched token".to_string().borrow(),
     });
 }
-fn error_eof(mut parse_state: &ParseState) {
-    parse_state.is_good = false;
-    parse_state.errors.push(ParseError {
+fn error_eof<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) {
+    errors.push(ParseError {
         message: "Unexoected EOF".to_string().borrow(),
     });
 }
-fn error_parse_number(mut parse_state: &ParseState) {
-    parse_state.is_good = false;
-    parse_state.errors.push(ParseError {
+fn error_parse_number<'a>(peekable: &mut std::iter::Peekable<Lexer<'a, Token>>, errors: &Vec<ParseError<'a>>) {
+    errors.push(ParseError {
         message: "Failed parsing number".to_string().borrow(),
     });
 }
