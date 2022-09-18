@@ -89,15 +89,18 @@ pub enum Token {
     #[token("null")]
     Null,
 
+    #[token("in")]
+    In,
+
     // Or regular expressions.
-    #[regex(r#""(.|\\")+""#)]
-    String,
+    #[regex(r#""(.|\\")+""#, |lex| parseString(lex.slice()))]
+    String(String),
 
-    #[regex(r"[-+]?[0-9]+(\.[0-9]+)?", priority = 2)]
-    Number,
+    #[regex(r"[-+]?[0-9]+(\.[0-9]+)?", |lex| lex.slice().parse(), priority = 2)]
+    Number(f64),
 
-    #[regex(r"[-_a-zA-Z][-_a-zA-Z0-9]*")]
-    Identifier,
+    #[regex(r"[-_a-zA-Z][-_a-zA-Z0-9]*", |lex| lex.slice().to_string())]
+    Identifier(String),
 
     // Logos requires one token variant to handle errors,
     // it can be named anything you wish.
@@ -107,4 +110,30 @@ pub enum Token {
     #[regex(r"[ \t\n\f]+", logos::skip)]
     #[regex(r"//.*\n", logos::skip)]
     Error,
+}
+
+fn parseString(s: &str) -> String {
+    let mut ret = String::new();
+    let mut escape = false;
+    for c in s.chars() {
+        if escape {
+            match c {
+                '\\' => ret.push('\\'),
+                'n' => ret.push('n'),
+                'r' => ret.push('r'),
+                'b' => ret.push('b'),
+                't' => ret.push('t'),
+                '"' => ret.push('"'),
+                _ => ret.push(c),
+            };
+            escape = false;
+        }
+        else {
+            match c {
+                '\\' => escape = true,
+                _ => ret.push(c),
+            };
+        }
+    }
+    return ret;
 }
