@@ -5,10 +5,8 @@ extern crate core;
 mod machine;
 mod assembler;
 
-use crate::assembler::Token;
-use logos::{Lexer, Logos};
+// use crate::assembler::Token;
 
 fn main() {
-    let mut lexer: Lexer<Token> = Token::lexer("");
 
 }

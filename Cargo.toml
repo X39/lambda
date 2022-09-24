@@ -3,9 +3,11 @@ name = "x39-lambda"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-logos = "0.12.1"
-pest = "2.3.1"
+nom = "7"
+tracing = "0"
+tracing-test = "0.2.3"
 uuid = "1.1.2"
+
+[dev-dependencies]
+tracing-test = "0"
