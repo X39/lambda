@@ -10,8 +10,22 @@ pub enum Statement<'a> {
     Exit,
     Start(Call<'a>),
     IfElse(IfElseStatement<'a>),
-    ForLoopStatement,
+    ForLoop(ForLoopStatement<'a>),
     Assignment(AssignmentStatement<'a>),
+}
+
+#[derive(Debug)]
+pub struct ForLoopStatement<'a> {
+    ident: &'a str,
+    over: ForLoopInstruction<'a>,
+    code: Vec<Statement<'a>>,
+}
+
+#[derive(Debug)]
+pub enum ForLoopInstruction<'a> {
+    Ident(&'a str),
+    Array(Vec<Value<'a>>),
+    Await(AwaitCallOrIdentProduction<'a>),
 }
 
 #[derive(Debug)]
@@ -152,11 +166,46 @@ mod parser {
             terminated(parse_exit, semicolon!()),
             terminated(parse_start, semicolon!()),
             map(parse_if_else, |v| Statement::IfElse(v)),
-            parse_for,
-            parse_assign,
+            map(parse_for, |v| Statement::ForLoop(v)),
+            map(parse_assign, |v| Statement::Assignment(v)),
         ))(input)?;
         trace!("Exiting parse_statement with {:?}", statement);
         Ok((input, statement))
+    }
+
+    pub fn parse_for<'a>(input: &'a str) -> IResult<&str, ForLoopStatement<'a>> {
+        // for ::= FOR IDENT IN for_variant code;
+        trace!("Entering parse_for");
+        let (input, value) = tuple((
+            preceded(delR!(tag("for")), delR!(alpha1)),
+            preceded(delR!(tag("in")), parse_for_instruction),
+            parse_code,
+        ))(input)?;
+        trace!("Exiting parse_for with {:?}", value);
+        Ok((input, ForLoopStatement {
+            ident: value.0,
+            over: value.1,
+            code: value.2,
+        }))
+    }
+
+    pub fn parse_for_instruction<'a>(input: &'a str) -> IResult<&str, ForLoopInstruction<'a>> {
+        // for_variant ::=  array | for_variant_await | IDENT;
+        // for_variant_await ::= AWAIT await_call_or_ident;
+        trace!("Entering parse_for_instruction");
+        let (input, value) = alt((
+            map(parse_array, |v| ForLoopInstruction::Array(match v {
+                Value::Array(s) => s,
+                _ => panic!("Invalid program"),
+            })),
+            map(parse_await_call_or_ident, |v| ForLoopInstruction::Await(match v {
+                AwaitStatement::AwaitCallOrIdent(s) => s,
+                _ => panic!("Invalid program"),
+            })),
+            map(alpha1, |v| ForLoopInstruction::Ident(v)),
+        ))(input)?;
+        trace!("Exiting parse_for_instruction with {:?}", value);
+        Ok((input, value))
     }
 
     pub fn parse_assign(input: &str) -> IResult<&str, AssignmentStatement> {
@@ -498,7 +547,7 @@ mod tests {
         "bar": "test",
         "foobar": 1.2,
         "other": null,
-        "array": [1,2,3,4]
+        "array": [1,2 , 3, 4 ,5,6]
     });
     await variable;
     result = await func2(variable);
@@ -528,8 +577,9 @@ mod tests {
     await any foobar;
     "#;
 
-    //#[test]
+    #[test]
     fn test_file1() -> Result<(), Box<dyn std::error::Error>> {
+        // cargo test -- --nocapture
         let file = super::parser::parse_x39file(TEST_FILE1)?;
         println!("{:?}", file.1);
         Ok(())
