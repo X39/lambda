@@ -8,6 +8,7 @@ pub enum Statement<'a> {
     Await(AwaitStatement<'a>),
     Abort(&'a str),
     Exit,
+    Comment,
     Start(Call<'a>),
     IfElse(IfElseStatement<'a>),
     ForLoop(ForLoopStatement<'a>),
@@ -118,12 +119,12 @@ mod parser {
     use std::str::FromStr;
     use nom::branch::alt;
     use nom::bytes::complete::tag;
-    use nom::character::complete::{alpha1, char, digit1, space0, space1};
+    use nom::character::complete::{alpha1, anychar, char, digit1, newline, space0, space1};
     use nom::error::ParseError;
     use nom::{IResult, Map, Parser};
     use nom::character::streaming::alphanumeric1;
     use nom::combinator::{map, map_res, opt, recognize};
-    use nom::multi::{fold_many0, many0, many1, separated_list0, separated_list1};
+    use nom::multi::{fold_many0, many0, many1, many_till, separated_list0, separated_list1};
     use nom::sequence::{delimited, preceded, separated_pair, terminated, tuple};
     use tracing::trace;
     use tracing_test::traced_test;
@@ -161,6 +162,7 @@ mod parser {
         // statement ::= s_await | s_abort | s_exit | s_start | if_else | for | assignment;
         trace!("Entering parse_statement");
         let (input, statement) = alt((
+            map(preceded(char('#'), many_till(anychar, newline)), |_| Statement::Comment),
             terminated(parse_await, semicolon!()),
             terminated(parse_abort, semicolon!()),
             terminated(parse_exit, semicolon!()),
@@ -541,7 +543,7 @@ mod tests {
     use tracing_test::traced_test;
 
     const TEST_FILE1: &str = r#"
-    // comment
+    # comment
     variable = start func({
         "foo": false,
         "bar": "test",
