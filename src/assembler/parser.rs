@@ -25,7 +25,7 @@ pub struct ForLoopStatement<'a> {
 #[derive(Debug)]
 pub enum ForLoopInstruction<'a> {
     Ident(&'a str),
-    Array(Vec<Value<'a>>),
+    Array(Vec<Value>),
     Await(AwaitCallOrIdentProduction<'a>),
 }
 
@@ -43,7 +43,7 @@ pub struct AssignmentStatement<'a> {
 
 #[derive(Debug)]
 pub enum AssignStatementData<'a> {
-    Value(Value<'a>),
+    Value(Value),
     Await(AwaitCallOrIdentProduction<'a>),
     Start(Call<'a>),
 }
@@ -86,26 +86,31 @@ pub enum ElseStatement<'a> {
 }
 
 #[derive(Debug)]
-pub enum Value<'a> {
+pub enum Value {
     NumericRange(NumericRange),
     Number(f64),
     Null,
-    String(&'a str),
+    String(String),
     Boolean(bool),
-    Object(Vec<Property<'a>>),
-    Array(Vec<Value<'a>>),
+    Object(Vec<Property>),
+    Array(Vec<Value>),
 }
 
 #[derive(Debug)]
-pub struct Property<'a> {
+pub struct Property {
     key: String,
-    value: Value<'a>,
+    value: Value,
 }
 
 #[derive(Debug)]
 pub struct Call<'a> {
     ident: &'a str,
-    value: Option<Value<'a>>,
+    value: Option<CallValue<'a>>,
+}
+#[derive(Debug)]
+pub enum CallValue<'a> {
+    Ident(&'a str),
+    Value(Value),
 }
 
 #[derive(Debug)]
@@ -115,46 +120,87 @@ pub struct NumericRange {
 }
 
 mod parser {
-    use std::ops::Index;
     use std::str::FromStr;
     use nom::branch::alt;
     use nom::bytes::complete::tag;
-    use nom::character::complete::{alpha1, anychar, char, digit1, newline, space0, space1};
+    use nom::character::complete::alpha1;
+    use nom::character::complete::anychar;
+    use nom::character::complete::char;
+    use nom::character::complete::digit1;
+    use nom::character::complete::newline;
+    use nom::character::complete::space1;
+    use nom::error::ErrorKind;
     use nom::error::ParseError;
-    use nom::{IResult, Map, Parser};
-    use nom::character::streaming::alphanumeric1;
-    use nom::combinator::{map, map_res, opt, recognize};
-    use nom::multi::{fold_many0, many0, many1, many_till, separated_list0, separated_list1};
-    use nom::sequence::{delimited, preceded, separated_pair, terminated, tuple};
+    use nom::AsChar;
+    use nom::InputTakeAtPosition;
+    use nom::IResult;
+    use nom::character::streaming::alphanumeric0;
+    use nom::combinator::opt;
+    use nom::combinator::map_res;
+    use nom::combinator::map;
+    use nom::combinator::recognize;
+    use nom::multi::many0;
+    use nom::multi::many_till;
+    use nom::multi::separated_list0;
+    use nom::sequence::delimited;
+    use nom::sequence::preceded;
+    use nom::sequence::separated_pair;
+    use nom::sequence::terminated;
+    use nom::sequence::tuple;
     use tracing::trace;
-    use tracing_test::traced_test;
     use crate::assembler::parser_string::parse_string;
     use super::*;
 
     #[macro_export]
     macro_rules! delO {
-        ($n:expr) => { delimited(space0, $n, space0) }
+        ($n:expr) => { delimited(whitespace0, $n, whitespace0) }
     }
     #[macro_export]
     macro_rules! delR {
-        ($n:expr) => { delimited(space0, $n, space1) }
+        ($n:expr) => { delimited(whitespace0, $n, space1) }
     }
     #[macro_export]
     macro_rules! semicolon {
-        () => { preceded(space0, char(';')) }
+        () => { delO!(char(';')) }
     }
+
+    pub fn whitespace0<T, E: ParseError<T>>(input: T) -> IResult<T, T, E>
+        where
+            T: InputTakeAtPosition,
+            <T as InputTakeAtPosition>::Item: AsChar + Clone,
+    {
+        input.split_at_position_complete(|item| {
+            let c = item.as_char();
+            !(c == ' ' || c == '\t' || c == '\r' || c == '\n')
+        })
+    }
+
+    pub fn whitespace1<T, E: ParseError<T>>(input: T) -> IResult<T, T, E>
+        where
+            T: InputTakeAtPosition,
+            <T as InputTakeAtPosition>::Item: AsChar + Clone,
+    {
+        input.split_at_position1_complete(
+            |item| {
+                let c = item.as_char();
+                !(c == ' ' || c == '\t' || c == '\r' || c == '\n')
+            },
+            ErrorKind::Space,
+        )
+    }
+
 
     pub fn parse_x39file(input: &str) -> IResult<&str, X39File> {
         // file ::= statements |;
-        // statements ::= statement statements | statement;
         let (input, statements) = parse_statements(input)?;
         Ok((input, X39File(statements)))
     }
 
     pub fn parse_statements(input: &str) -> IResult<&str, Vec<Statement>> {
-        // file ::= statements |;
         // statements ::= statement statements | statement;
+        trace!("Entering parse_statements");
         let (input, statements) = many0(delO!(parse_statement))(input)?;
+        trace!("Exiting parse_statements with {:?}", statements);
         Ok((input, statements))
     }
 
@@ -162,24 +208,43 @@ mod parser {
         // statement ::= s_await | s_abort | s_exit | s_start | if_else | for | assignment;
         trace!("Entering parse_statement");
         let (input, statement) = alt((
-            map(preceded(char('#'), many_till(anychar, newline)), |_| Statement::Comment),
+            parse_comment,
             terminated(parse_await, semicolon!()),
             terminated(parse_abort, semicolon!()),
             terminated(parse_exit, semicolon!()),
             terminated(parse_start, semicolon!()),
             map(parse_if_else, |v| Statement::IfElse(v)),
             map(parse_for, |v| Statement::ForLoop(v)),
-            map(parse_assign, |v| Statement::Assignment(v)),
+            map(terminated(parse_assign, semicolon!()), |v| Statement::Assignment(v)),
         ))(input)?;
         trace!("Exiting parse_statement with {:?}", statement);
         Ok((input, statement))
+    }
+
+    pub fn parse_comment(input: &str) -> IResult<&str, Statement> {
+        // comment ::= # { ANY } NEWLINE
+        trace!("Entering parse_comment");
+        let (input, _) = preceded(char('#'), many_till(anychar, newline))(input)?;
+        trace!("Exiting parse_comment");
+        Ok((input, Statement::Comment))
+    }
+
+    pub fn parse_ident(input: &str) -> IResult<&str, &str> {
+        trace!("Entering parse_ident");
+        let (input, value) = recognize(
+            tuple((
+                alpha1,
+                alphanumeric0,
+            )))(input)?;
+        trace!("Exiting parse_ident");
+        Ok((input, value))
     }
 
     pub fn parse_for<'a>(input: &'a str) -> IResult<&str, ForLoopStatement<'a>> {
         // for ::= FOR IDENT IN for_variant code;
         trace!("Entering parse_for");
         let (input, value) = tuple((
-            preceded(delR!(tag("for")), delR!(alpha1)),
+            preceded(delR!(tag("for")), delR!(parse_ident)),
             preceded(delR!(tag("in")), parse_for_instruction),
             parse_code,
         ))(input)?;
@@ -204,7 +269,7 @@ mod parser {
                 AwaitStatement::AwaitCallOrIdent(s) => s,
                 _ => panic!("Invalid program"),
             })),
-            map(alpha1, |v| ForLoopInstruction::Ident(v)),
+            map(parse_ident, |v| ForLoopInstruction::Ident(v)),
         ))(input)?;
         trace!("Exiting parse_for_instruction with {:?}", value);
         Ok((input, value))
@@ -214,7 +279,7 @@ mod parser {
         // assignment ::= IDENT PLUSEQUALS assignment_value | IDENT EQUALS assignment_value;
         trace!("Entering parse_assign");
         let (input, value) = tuple((
-            delO!(alpha1),
+            delO!(parse_ident),
             alt((
                 preceded(tag("+="), map(parse_assign_value, |v| AssignmentType::Append(v))),
                 preceded(tag("="), map(parse_assign_value, |v| AssignmentType::Assign(v))),
@@ -247,11 +312,11 @@ mod parser {
     pub fn parse_await(input: &str) -> IResult<&str, Statement> {
         // await ::= await await_any | await await_all | await await_call_or_ident;
         trace!("Entering parse_await");
-        let (input, await_statement) = preceded(delR!(tag("await")), alt((
+        let (input, await_statement) = alt((
             parse_await_any,
             parse_await_all,
             parse_await_call_or_ident,
-        )))(input)?;
+        ))(input)?;
         trace!("Exiting parse_await with {:?}", await_statement);
         Ok((input, Statement::Await(await_statement)))
     }
@@ -259,7 +324,9 @@ mod parser {
     pub fn parse_start(input: &str) -> IResult<&str, Statement> {
         // start ::= start call;
         trace!("Entering parse_start");
-        let (input, call) = preceded(delR!(tag("start")), parse_call)(input)?;
+        let (input, call) = preceded(
+            delR!(tag("start")),
+            parse_call)(input)?;
         trace!("Exiting parse_start with {:?}", call);
         Ok((input, Statement::Start(call)))
     }
@@ -267,7 +334,9 @@ mod parser {
     pub fn parse_await_any(input: &str) -> IResult<&str, AwaitStatement> {
         // await_any ::= ANY IDENT;
         trace!("Entering parse_await_any");
-        let (input, ident) = preceded(delR!(tag("any")), alpha1)(input)?;
+        let (input, ident) = preceded(
+            tuple((delR!(tag("await")), delR!(tag("any")))),
+            parse_ident)(input)?;
         trace!("Exiting parse_await_any with {:?}", ident);
         Ok((input, AwaitStatement::AwaitAny(ident)))
     }
@@ -275,14 +344,16 @@ mod parser {
     pub fn parse_await_all(input: &str) -> IResult<&str, AwaitStatement> {
         // await_all ::= ALL IDENT;
         trace!("Entering parse_await_all");
-        let (input, ident) = preceded(delR!(tag("all")), alpha1)(input)?;
+        let (input, ident) = preceded(
+            tuple((delR!(tag("await")), delR!(tag("all")))),
+            parse_ident)(input)?;
         trace!("Exiting parse_await_all with {:?}", ident);
         Ok((input, AwaitStatement::AwaitAll(ident)))
     }
 
     pub fn parse_abort(input: &str) -> IResult<&str, Statement> {
         trace!("Entering parse_abort");
-        let (input, ident) = preceded(delR!(tag("abort")), alpha1)(input)?;
+        let (input, ident) = preceded(delR!(tag("abort")), parse_ident)(input)?;
         trace!("Exiting parse_abort with {:?}", ident);
         Ok((input, Statement::Abort(ident)))
     }
@@ -297,10 +368,12 @@ mod parser {
     pub fn parse_await_call_or_ident(input: &str) -> IResult<&str, AwaitStatement> {
         // await_call_or_ident ::= call | IDENT;
         trace!("Entering parse_await_call_or_ident");
-        let (input, await_call_or_ident) = preceded(delR!(tag("await")), alt((
-            parse_await_call,
-            parse_await_ident,
-        )))(input)?;
+        let (input, await_call_or_ident) = preceded(
+            delR!(tag("await")),
+            alt((
+                parse_await_call,
+                parse_await_ident,
+            )))(input)?;
         trace!("Exiting parse_await_call_or_ident with {:?}", await_call_or_ident);
         Ok((input, AwaitStatement::AwaitCallOrIdent(await_call_or_ident)))
     }
@@ -316,7 +389,7 @@ mod parser {
     pub fn parse_call(input: &str) -> IResult<&str, Call> {
         // call ::= IDENT ROUNDOPEN value ROUNDCLOSE | IDENT ROUNDOPEN ROUNDCLOSE;
         trace!("Entering parse_call");
-        let (input, ident) = alpha1(input)?;
+        let (input, ident) = parse_ident(input)?;
         let (input, value) = alt((
             parse_call_with_value,
             parse_call_without_value,
@@ -328,14 +401,21 @@ mod parser {
         }))
     }
 
-    pub fn parse_call_with_value(input: &str) -> IResult<&str, Option<Value>> {
+    pub fn parse_call_with_value(input: &str) -> IResult<&str, Option<CallValue>> {
         trace!("Entering parse_call_with_value");
-        let (input, value) = delimited(char('('), parse_value, char(')'))(input)?;
+        let (input, value) = delimited(
+            delO!(char('(')),
+            alt((
+                map(parse_value, |v| CallValue::Value(v)),
+                map(parse_ident, |v| CallValue::Ident(v)),
+            )),
+            delO!(char(')')),
+        )(input)?;
         trace!("Exiting parse_call_with_value with {:?}", value);
         Ok((input, Some(value)))
     }
 
-    pub fn parse_call_without_value(input: &str) -> IResult<&str, Option<Value>> {
+    pub fn parse_call_without_value(input: &str) -> IResult<&str, Option<CallValue>> {
         trace!("Entering parse_call_without_value");
         let (input, _) = tuple((char('('), char(')')))(input)?;
         trace!("Exiting parse_call_without_value");
@@ -344,7 +424,7 @@ mod parser {
 
     pub fn parse_await_ident(input: &str) -> IResult<&str, AwaitCallOrIdentProduction> {
         trace!("Entering parse_call_ident");
-        let (input, ident) = alpha1(input)?;
+        let (input, ident) = parse_ident(input)?;
         trace!("Exiting parse_call_ident with {:?}", ident);
         Ok((input, AwaitCallOrIdentProduction::Ident(ident)))
     }
@@ -368,7 +448,7 @@ mod parser {
         let (input, value) = delimited(
             delO!(char('{')),
             terminated(
-                separated_list0(char(','), parse_obj_data),
+                separated_list0(delO!(char(',')), parse_obj_data),
                 opt(char(','))),
             delO!(char('}')))(input)?;
         trace!("Exiting parse_obj with {:?}", value);
@@ -392,17 +472,25 @@ mod parser {
 
     pub fn parse_array(input: &str) -> IResult<&str, Value> {
         // array ::= SQUAREOPEN array_data SQUARECLOSE | SQUAREOPEN SQUARECLOSE;
-        // array_data ::= IDENT COMMA array_data | value COMMA array_data | IDENT COMMA | value COMMA | IDENT | value;
         trace!("Entering parse_array");
         let (input, value) =
             delimited(
                 delO!(char('[')),
-                terminated(
-                    separated_list0(char(','), parse_value),
-                    opt(char(','))),
+                parse_array_body,
                 delO!(char(']')))(input)?;
         trace!("Exiting parse_array with {:?}", value);
         Ok((input, Value::Array(value)))
+    }
+
+    pub fn parse_array_body(input: &str) -> IResult<&str, Vec<Value>> {
+        // array_data ::= IDENT COMMA array_data | value COMMA array_data | IDENT COMMA | value COMMA | IDENT | value;
+        trace!("Entering parse_array_body");
+        let (input, value) =
+            terminated(
+                separated_list0(delO!(char(',')), parse_value),
+                opt(char(',')))(input)?;
+        trace!("Exiting parse_array_body with {:?}", value);
+        Ok((input, value))
     }
 
     pub fn parse_code(input: &str) -> IResult<&str, Vec<Statement>> {
@@ -417,30 +505,30 @@ mod parser {
         Ok((input, value))
     }
 
+    pub fn parse_numeric_literal(input: &str) -> IResult<&str, f64> {
+        let result = map_res(
+            alt((
+                recognize(tuple((digit1, char('.'), digit1))),
+                recognize(digit1),
+            )),
+            |s: &str| f64::from_str(s))(input)?;
+        Ok(result)
+    }
+
+    fn parse_numeric_range(input: &str) -> IResult<&str, Value> {
+        let (input, from_to) = separated_pair(parse_numeric_literal, tag(".."), parse_numeric_literal)(input)?;
+        return Ok((input, Value::NumericRange(NumericRange {
+            from: from_to.0,
+            to: from_to.1,
+        })));
+    }
+
     pub fn parse_numeric(input: &str) -> IResult<&str, Value> {
         // numeric ::= NUMBER DOTDOT NUMBER | NUMBER
-        fn numeric_literal(input: &str) -> IResult<&str, f64> {
-            let result = map_res(
-                recognize(
-                    tuple((digit1, char('.'), digit1))),
-                |s: &str| f64::from_str(s))(input)?;
-            Ok(result)
-        }
-        fn parse_range(input: &str) -> IResult<&str, Value> {
-            let (input, from_to) = separated_pair(numeric_literal, tag(".."), numeric_literal)(input)?;
-            return Ok((input, Value::NumericRange(NumericRange {
-                from: from_to.0,
-                to: from_to.1,
-            })));
-        }
-        fn parse_number(input: &str) -> IResult<&str, Value> {
-            let (input, value) = numeric_literal(input)?;
-            return Ok((input, Value::Number(value)));
-        }
-        trace!("Entering parse_numeric");
+        trace!("Entering parse_numeric with {:?}", input);
         let (input, value) = delO!(alt((
-            parse_range,
-            parse_number,
+            parse_numeric_range,
+            map(parse_numeric_literal, |v| Value::Number(v)),
         )))(input)?;
         trace!("Exiting parse_numeric with {:?}", value);
         Ok((input, value))
@@ -470,7 +558,7 @@ mod parser {
         trace!("Entering parse_constant_string");
         let (input, value) = parse_string(input)?;
         trace!("Exiting parse_constant_string with {:?}", value);
-        Ok((input, Value::Null))
+        Ok((input, Value::String(value)))
     }
 
     pub fn parse_constant_true(input: &str) -> IResult<&str, Value> {
@@ -509,7 +597,7 @@ mod parser {
                     AwaitStatement::AwaitCallOrIdent(d) => d,
                     _ => panic!("Invalid program"),
                 })),
-                map(alpha1, |v| IfStatementCondition::Ident(v)),
+                map(parse_ident, |v| IfStatementCondition::Ident(v)),
             ))),
             parse_code,
         ))(input)?;
@@ -556,10 +644,11 @@ mod tests {
     if await conditionFunc(result) {
         exit;
     }
-    else if conditionFunc2(result) {
+    else if await conditionFunc2(result) {
         exit;
     }
     else {
+        # Something ain't working here
         collection = await generateFunc(12);
         list = [];
         for it in collection {
@@ -580,6 +669,7 @@ mod tests {
     "#;
 
     #[test]
+    #[traced_test]
     fn test_file1() -> Result<(), Box<dyn std::error::Error>> {
         // cargo test -- --nocapture
         let file = super::parser::parse_x39file(TEST_FILE1)?;
@@ -591,6 +681,311 @@ mod tests {
     #[traced_test]
     fn test_file2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_x39file(TEST_FILE2)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_comment_with_contents() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_comment("#asdasdasdasd\n")?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_comment_empty() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_comment("#\n")?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_obj_empty_1() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_obj("{}")?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_obj_empty_2() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_obj("{ }")?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_obj_single_data() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_obj(r#"{ "foo": "bar" }"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_obj_multi_data() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_obj(r#"{ "foo": "bar", "bar" :"foo" }"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_obj_multi_data_comma_terminated() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_obj(r#"{ "foo": "bar", "bar" :"foo" ,}"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_empty_1() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array(r#"[]"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_empty_2() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array(r#"[ ]"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_single_value_1() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array(r#"[ 1 ]"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_single_value_2() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array(r#"[2]"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_multi_value() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array(r#"[1,2]"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_multi_value_comma_terminated() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array(r#"[1, 2 , 3,]"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_body_single_value_1() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array_body(r#"1"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_body_single_value_2() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array_body(r#" 2 "#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_body_multi_value() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array_body(r#"1,2"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_array_body_multi_value_comma_terminated() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_array_body(r#"1, 2 , 3,"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_numeric_literal_int() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_numeric_literal(r#"1"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_numeric_literal_float() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_numeric_literal(r#"1.5"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_value_numeric_literal_int() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_value(r#"1"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_value_numeric_literal_float() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_value(r#"1.5"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_value_numeric_range() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_value(r#"1..5"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_await_call_or_ident_with_ident() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_await_call_or_ident(r#"await ident"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_await_with_ident() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_await(r#"await ident"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_await_with_call_alpha() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_await(r#"await call({})"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_await_with_call_alphanumeric() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_await(r#"await call123({})"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_assign_await_call_alpha() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_assign(r#"ident = await call({})"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_assign_await_call_alphanumeric() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_assign(r#"ident123 = await call123({})"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statement_with_await_ident() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statement(r#"await ident;"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statements_with_double_await_ident() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statements(r#"await ident; await ident;"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statements_with_assign_start_and_await() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statements(r#"ident = start foo({}); await ident;"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statement_with_assign_await_call() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statement(r#"ident = await foo({});"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statements_with_assign_await_call_twice() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statements(r#"ident = await foo({}); ident = await foo({});"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statements_with_if_else_chain_twice() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statements(r#"if await foo {} else if await bar {} else {} if await foo {} else if await bar {} else {}"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_statement_with_if_else_chain() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statements(r#"if await foo {} else if await bar {} else {}"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_call_with_value_from_ident() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_call(r#"foo(ident)"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_call_with_no_value() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_call(r#"foo()"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_if_else_chain() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_if_else(r#"if await foo {} else if await bar {} else {}"#)?;
         println!("{:?}", file.1);
         Ok(())
     }
