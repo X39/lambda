@@ -142,7 +142,7 @@ mod parser {
     use nom::multi::many0;
     use nom::multi::many_till;
     use nom::multi::separated_list0;
-    use nom::sequence::delimited;
+    use nom::sequence::{delimited, pair};
     use nom::sequence::preceded;
     use nom::sequence::separated_pair;
     use nom::sequence::terminated;
@@ -232,10 +232,10 @@ mod parser {
     pub fn parse_ident(input: &str) -> IResult<&str, &str> {
         trace!("Entering parse_ident");
         let (input, value) = recognize(
-            tuple((
+            pair(
                 alpha1,
                 alphanumeric0,
-            )))(input)?;
+            ))(input)?;
         trace!("Exiting parse_ident");
         Ok((input, value))
     }
@@ -965,6 +965,13 @@ mod tests {
         println!("{:?}", file.1);
         Ok(())
     }
+    #[test]
+    #[traced_test]
+    fn test_parse_statement_with_if_else_both_content() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_statements(r#"if await foo { exit; } else {exit;}"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
 
     #[test]
     #[traced_test]
@@ -986,6 +993,20 @@ mod tests {
     #[traced_test]
     fn test_parse_if_else_chain() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_if_else(r#"if await foo {} else if await bar {} else {}"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+    #[test]
+    #[traced_test]
+    fn test_parse_ident_alpha() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_ident(r#"abcdefghijklmnopqrstuvwxyz"#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+    #[test]
+    #[traced_test]
+    fn test_parse_ident_alphanumeric() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_ident(r#"abcdefghijklmnopqrstuvwxyz0123456789"#)?;
         println!("{:?}", file.1);
         Ok(())
     }
