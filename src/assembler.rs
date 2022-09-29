@@ -2,3 +2,4 @@
 
 mod parser;
 mod parser_string;
+mod compiler;

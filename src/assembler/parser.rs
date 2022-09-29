@@ -1,126 +1,129 @@
-/// X39 File
-#[derive(Debug)]
-pub struct X39File<'a>(Vec<Statement<'a>>);
 
-/// X39 Statement
-#[derive(Debug)]
-pub enum Statement<'a> {
-    Await(AwaitStatement<'a>),
-    Abort(&'a str),
-    Exit,
-    Comment,
-    Start(Call<'a>),
-    IfElse(IfElseStatement<'a>),
-    ForLoop(ForLoopStatement<'a>),
-    Assignment(AssignmentStatement<'a>),
-}
+pub mod parser {
+    /// X39 File
+    #[derive(Debug)]
+    pub struct X39File<'a> {
+        pub statements: Vec<Statement<'a>>,
+    }
 
-#[derive(Debug)]
-pub struct ForLoopStatement<'a> {
-    ident: &'a str,
-    over: ForLoopInstruction<'a>,
-    code: Vec<Statement<'a>>,
-}
+    /// X39 Statement
+    #[derive(Debug)]
+    pub enum Statement<'a> {
+        Await(AwaitStatement<'a>),
+        Abort(&'a str),
+        Exit,
+        Comment,
+        Start(Call<'a>),
+        IfElse(IfElseStatement<'a>),
+        ForLoop(ForLoopStatement<'a>),
+        Assignment(AssignmentStatement<'a>),
+    }
 
-#[derive(Debug)]
-pub enum ForLoopInstruction<'a> {
-    Ident(&'a str),
-    Await(AwaitCallOrIdentProduction<'a>),
-    Value(Value),
-}
+    #[derive(Debug)]
+    pub struct ForLoopStatement<'a> {
+        ident: &'a str,
+        over: ForLoopInstruction<'a>,
+        code: Vec<Statement<'a>>,
+    }
 
-#[derive(Debug)]
-pub enum AssignmentType<'a> {
-    Append(AssignStatementData<'a>),
-    Assign(AssignStatementData<'a>),
-}
+    #[derive(Debug)]
+    pub enum ForLoopInstruction<'a> {
+        Ident(&'a str),
+        Await(AwaitCallOrIdentProduction<'a>),
+        Value(Value),
+    }
 
-#[derive(Debug)]
-pub struct AssignmentStatement<'a> {
-    ident: &'a str,
-    value: AssignmentType<'a>,
-}
+    #[derive(Debug)]
+    pub enum AssignmentType<'a> {
+        Append(AssignStatementData<'a>),
+        Assign(AssignStatementData<'a>),
+    }
 
-#[derive(Debug)]
-pub enum AssignStatementData<'a> {
-    Value(Value),
-    Await(AwaitCallOrIdentProduction<'a>),
-    Start(Call<'a>),
-}
+    #[derive(Debug)]
+    pub struct AssignmentStatement<'a> {
+        ident: &'a str,
+        value: AssignmentType<'a>,
+    }
 
-#[derive(Debug)]
-pub enum AwaitStatement<'a> {
-    AwaitAny(&'a str),
-    AwaitAll(&'a str),
-    AwaitCallOrIdent(AwaitCallOrIdentProduction<'a>),
-}
+    #[derive(Debug)]
+    pub enum AssignStatementData<'a> {
+        Value(Value),
+        Await(AwaitCallOrIdentProduction<'a>),
+        Start(Call<'a>),
+    }
 
-#[derive(Debug)]
-pub enum AwaitCallOrIdentProduction<'a> {
-    Call(Call<'a>),
-    Ident(&'a str),
-}
+    #[derive(Debug)]
+    pub enum AwaitStatement<'a> {
+        AwaitAny(&'a str),
+        AwaitAll(&'a str),
+        AwaitCallOrIdent(AwaitCallOrIdentProduction<'a>),
+    }
 
-#[derive(Debug)]
-pub struct IfElseStatement<'a> {
-    if_statement: IfStatement<'a>,
-    else_statement: Option<ElseStatement<'a>>,
-}
+    #[derive(Debug)]
+    pub enum AwaitCallOrIdentProduction<'a> {
+        Call(Call<'a>),
+        Ident(&'a str),
+    }
 
-#[derive(Debug)]
-pub struct IfStatement<'a> {
-    condition: IfStatementCondition<'a>,
-    code: Vec<Statement<'a>>,
-}
+    #[derive(Debug)]
+    pub struct IfElseStatement<'a> {
+        if_statement: IfStatement<'a>,
+        else_statement: Option<ElseStatement<'a>>,
+    }
 
-#[derive(Debug)]
-pub enum IfStatementCondition<'a> {
-    Await(AwaitCallOrIdentProduction<'a>),
-    Ident(&'a str),
-}
+    #[derive(Debug)]
+    pub struct IfStatement<'a> {
+        condition: IfStatementCondition<'a>,
+        code: Vec<Statement<'a>>,
+    }
 
-#[derive(Debug)]
-pub enum ElseStatement<'a> {
-    Code(Vec<Statement<'a>>),
-    IfElse(Box<IfElseStatement<'a>>),
-}
+    #[derive(Debug)]
+    pub enum IfStatementCondition<'a> {
+        Await(AwaitCallOrIdentProduction<'a>),
+        Ident(&'a str),
+    }
 
-#[derive(Debug)]
-pub enum Value {
-    NumericRange(NumericRange),
-    Number(f64),
-    Null,
-    String(String),
-    Boolean(bool),
-    Object(Vec<Property>),
-    Array(Vec<Value>),
-}
+    #[derive(Debug)]
+    pub enum ElseStatement<'a> {
+        Code(Vec<Statement<'a>>),
+        IfElse(Box<IfElseStatement<'a>>),
+    }
 
-#[derive(Debug)]
-pub struct Property {
-    key: String,
-    value: Value,
-}
+    #[derive(Debug)]
+    pub enum Value {
+        NumericRange(NumericRange),
+        Number(f64),
+        Null,
+        String(String),
+        Boolean(bool),
+        Object(Vec<Property>),
+        Array(Vec<Value>),
+    }
 
-#[derive(Debug)]
-pub struct Call<'a> {
-    ident: &'a str,
-    value: Option<CallValue<'a>>,
-}
+    #[derive(Debug)]
+    pub struct Property {
+        key: String,
+        value: Value,
+    }
 
-#[derive(Debug)]
-pub enum CallValue<'a> {
-    Ident(&'a str),
-    Value(Value),
-}
+    #[derive(Debug)]
+    pub struct Call<'a> {
+        ident: &'a str,
+        value: Option<CallValue<'a>>,
+    }
 
-#[derive(Debug)]
-pub struct NumericRange {
-    from: f64,
-    to: f64,
-}
+    #[derive(Debug)]
+    pub enum CallValue<'a> {
+        Ident(&'a str),
+        Value(Value),
+    }
 
-mod parser {
+    #[derive(Debug)]
+    pub struct NumericRange {
+        from: f64,
+        to: f64,
+    }
+
     use std::str::FromStr;
     use nom::branch::alt;
     use nom::bytes::complete::tag;
@@ -194,7 +197,9 @@ mod parser {
     pub fn parse_x39file(input: &str) -> IResult<&str, X39File> {
         // file ::= statements |;
         let (input, statements) = complete(parse_statements)(input)?;
-        Ok((input, X39File(statements)))
+        Ok((input, X39File {
+            statements,
+        }))
     }
 
     pub fn parse_statements(input: &str) -> IResult<&str, Vec<Statement>> {
@@ -521,6 +526,7 @@ mod parser {
         trace!("Exiting parse_numeric_literal_double with {:?}", value);
         Ok((input, value))
     }
+
     pub fn parse_numeric_literal_integer(input: &str) -> IResult<&str, &str> {
         trace!("Entering parse_numeric_literal_integer with {:?}", input);
         let (input, value) = recognize(digit1)(input)?;
@@ -1089,6 +1095,7 @@ mod tests {
         println!("{:?}", file.1);
         Ok(())
     }
+
     #[test]
     #[traced_test]
     fn test_parse_constant_with_false() -> Result<(), Box<dyn std::error::Error>> {
@@ -1096,6 +1103,7 @@ mod tests {
         println!("{:?}", file.1);
         Ok(())
     }
+
     #[test]
     #[traced_test]
     fn test_parse_constant_with_null() -> Result<(), Box<dyn std::error::Error>> {
@@ -1103,6 +1111,7 @@ mod tests {
         println!("{:?}", file.1);
         Ok(())
     }
+
     #[test]
     #[traced_test]
     fn test_parse_constant_with_string() -> Result<(), Box<dyn std::error::Error>> {
@@ -1110,6 +1119,7 @@ mod tests {
         println!("{:?}", file.1);
         Ok(())
     }
+
     #[test]
     #[traced_test]
     fn test_parse_for_in_range() -> Result<(), Box<dyn std::error::Error>> {
