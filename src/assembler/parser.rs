@@ -25,8 +25,8 @@ pub struct ForLoopStatement<'a> {
 #[derive(Debug)]
 pub enum ForLoopInstruction<'a> {
     Ident(&'a str),
-    Array(Vec<Value>),
     Await(AwaitCallOrIdentProduction<'a>),
+    Value(Value),
 }
 
 #[derive(Debug)]
@@ -136,7 +136,7 @@ mod parser {
     use nom::InputTakeAtPosition;
     use nom::IResult;
     use nom::character::complete::alphanumeric0;
-    use nom::combinator::opt;
+    use nom::combinator::{complete, opt};
     use nom::combinator::map_res;
     use nom::combinator::map;
     use nom::combinator::recognize;
@@ -193,7 +193,7 @@ mod parser {
 
     pub fn parse_x39file(input: &str) -> IResult<&str, X39File> {
         // file ::= statements |;
-        let (input, statements) = parse_statements(input)?;
+        let (input, statements) = complete(parse_statements)(input)?;
         Ok((input, X39File(statements)))
     }
 
@@ -262,15 +262,12 @@ mod parser {
         // for_variant_await ::= AWAIT await_call_or_ident;
         trace!("Entering parse_for_instruction with {:?}", input);
         let (input, value) = alt((
-            map(parse_array, |v| ForLoopInstruction::Array(match v {
-                Value::Array(s) => s,
-                _ => panic!("Invalid program"),
-            })),
             map(parse_await_call_or_ident, |v| ForLoopInstruction::Await(match v {
                 AwaitStatement::AwaitCallOrIdent(s) => s,
                 _ => panic!("Invalid program"),
             })),
             map(parse_ident, |v| ForLoopInstruction::Ident(v)),
+            map(parse_value, |v| ForLoopInstruction::Value(v)),
         ))(input)?;
         trace!("Exiting parse_for_instruction with {:?}", value);
         Ok((input, value))
@@ -689,6 +686,32 @@ mod tests {
     await any foobar;
     "#;
 
+    const TEST_FILE3: &str = r#"
+    if await conditionFunc(result) {
+        exit;
+    }
+    else if await conditionFunc2(result) {
+        exit;
+    }
+    else {
+        await generateFunc(12);
+    }
+    "#;
+
+    const TEST_FILE4: &str = r#"
+        collection = await generateFunc(12);
+        list = [];
+        for it in collection {
+            list += start handleIt(it);
+        }
+        await all list;
+        list = [];
+        for it in 0..20 {
+            list += start handleIt(it);
+        }
+        await any list;
+        abort all list;"#;
+
     #[test]
     #[traced_test]
     fn test_file1() -> Result<(), Box<dyn std::error::Error>> {
@@ -702,6 +725,22 @@ mod tests {
     #[traced_test]
     fn test_file2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_x39file(TEST_FILE2)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_file3() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_x39file(TEST_FILE3)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_file4() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_x39file(TEST_FILE4)?;
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1068,6 +1107,13 @@ mod tests {
     #[traced_test]
     fn test_parse_constant_with_string() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_constant(r#""foobar""#)?;
+        println!("{:?}", file.1);
+        Ok(())
+    }
+    #[test]
+    #[traced_test]
+    fn test_parse_for_in_range() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_for(r#"for it in 0..20 { list += start handleIt(it); }"#)?;
         println!("{:?}", file.1);
         Ok(())
     }
