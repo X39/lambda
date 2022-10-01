@@ -108,8 +108,8 @@ pub mod parser {
 
     #[derive(Debug)]
     pub struct Call<'a> {
-        ident: &'a str,
-        value: Option<CallValue<'a>>,
+        pub ident: &'a str,
+        pub value: Option<CallValue<'a>>,
     }
 
     #[derive(Debug)]

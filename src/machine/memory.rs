@@ -12,6 +12,13 @@ pub enum InstructionArg {
     Empty,
     Unsigned(u16),
     Signed(i16),
+    Type(VmValueType),
+}
+pub enum VmValueType {
+    Null,
+    Array,
+    ArrayOfJobs,
+    Job,
 }
 
 pub struct VmPair {

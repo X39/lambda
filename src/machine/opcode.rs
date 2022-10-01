@@ -2,41 +2,33 @@
 
 ///
 pub enum OpCode {
-    /// no operation
+    /// no operation.
     NoOp,
-    /// End processing
+    /// End processing.
     Exit,
-    /// POP 1:value, POP 0:string and set a variable named 0 to value 1
-    Assign,
-    /// POP 0:array, POP 1:value and append value 1 to array 0
-    Append,
-    /// PUSH an empty array
-    PushEmptyArray,
-    /// PUSH a false value to stack
-    PushFalse,
-    /// PUSH a true value to stack
-    PushTrue,
-    /// PUSH a null value to stack
-    PushNull,
-    /// PUSH a value from the value list at index u16:ARG to stack
+    /// PUSH a value from the value list at index u16:ARG to stack.
     PushValueU16,
-    /// POP 0:bool and jump relative to i16:ARG in the byte-code
-    /// if 0 is true
-    JumpOnTrueI16,
-    /// POP 0:bool and jump relative to i16:ARG in the byte-code
-    /// if 0 is false
-    JumpOnFalseI16,
-    /// Jump relative to i16:ARG in the byte-code if 0 is false
-    JumpI16,
-    /// Start the function named u16:ARG and PUSH job
-    StartU16,
-    /// POP 0:job and await completion, suspending execution
-    /// until completed
+    /// PUSH a true value to stack.
+    PushTrue,
+    /// PUSH a false value to stack.
+    PushFalse,
+    /// PUSH a null value to stack.
+    PushNull,
+    /// POP a string and PUSH a variable
+    GetVariable,
+    /// POP a string and PUSH a variable after checking type::ARG or ERROR if variable is not
+    /// of type.
+    GetVariableOfType,
+    /// POP a job and halt the execution until it completed.
     Await,
-    /// POP 0:array and await completion of any job inside of it
-    /// suspending execution until completed
+    /// POP an array of jobs and halt the execution until one of them completed.
     AwaitAny,
-    /// POP 0:array and await completion of all jobs inside of it
-    /// suspending execution until completed.
+    /// POP an array of jobs and halt the execution until all have completed.
     AwaitAll,
+    /// POP a string to interpret as function name and POP a value to pass and PUSH a job,
+    /// executing the function, passing the argument.
+    Call,
+    /// POP a string to interpret as function name and PUSH a job,
+    /// executing the function.
+    CallVoid,
 }
