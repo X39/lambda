@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg5"
+   inkscape:version="1.2 (dc2aedaf03, 2022-05-15)"
+   sodipodi:docname="logo.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview7"
+     pagecolor="#505050"
+     bordercolor="#ffffff"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="1"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     showgrid="false"
+     inkscape:zoom="0.73851712"
+     inkscape:cx="135.40648"
+     inkscape:cy="561.93687"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs2" />
+  <g
+     inkscape:label="Ebene 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <circle
+       style="fill:#ffffff;stroke-width:11.64219583;stroke:#c57817;stroke-opacity:1;stroke-dasharray:none;fill-opacity:1"
+       id="path61"
+       cy="128.97467"
+       cx="109.2702"
+       r="60.188179" />
+    <rect
+       style="fill:#c57817;fill-opacity:1;stroke:none;stroke-width:11.6422;stroke-dasharray:none;stroke-opacity:1"
+       id="rect4641"
+       width="14.688774"
+       height="117.51026"
+       x="27.310749"
+       y="107.28434"
+       transform="rotate(-30)" />
+    <rect
+       style="fill:#c57817;fill-opacity:1;stroke:none;stroke-width:8.88413;stroke-dasharray:none;stroke-opacity:1"
+       id="rect4641-0"
+       width="14.688774"
+       height="68.428238"
+       x="147.04993"
+       y="49.774052"
+       transform="rotate(30)" />
+  </g>
+</svg>
