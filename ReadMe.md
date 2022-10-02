@@ -1,1 +1,1 @@
-(Logo)[!logo-64x.png!]
+# ![lambda-logo](logo-32px.png) *lambda*
