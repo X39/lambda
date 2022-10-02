@@ -122,19 +122,65 @@ mod compiler {
             Value::Object(object) => compile_object(object, vm),
             Value::Array(array) => compile_array(array, vm),
         }
-        todo!()
     }
 
     fn compile_array(array: &Vec<Value>, vm: &mut VmState) {
-        todo!()
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PushEmptyArray,
+            arg: InstructionArg::Empty,
+        });
+
+        for it in array.iter() {
+            compile_value(it, vm);
+            vm.instructions.push(Instruction {
+                opcode: OpCode::AppendArrayPush,
+                arg: InstructionArg::Empty,
+            });
+        }
     }
 
     fn compile_object(object: &Vec<Property>, vm: &mut VmState) {
-        todo!()
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PushEmptyObject,
+            arg: InstructionArg::Empty,
+        });
+
+        for it in object.iter() {
+            // Push Key
+            let key = it.key.to_string();
+            let value_index = util_get_value_index(VmValue::String(key), vm.borrow_mut());
+            vm.instructions.push(Instruction {
+                opcode: OpCode::PushValueU16,
+                arg: InstructionArg::Unsigned(value_index),
+            });
+
+            // Push Value
+            let value = it.value.borrow();
+            compile_value(value, vm);
+            vm.instructions.push(Instruction {
+                opcode: OpCode::AppendPropertyPush,
+                arg: InstructionArg::Empty,
+            });
+        }
     }
 
     fn compile_numeric_range(numeric_range: &NumericRange, vm: &mut VmState) {
-        todo!()
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PushEmptyArray,
+            arg: InstructionArg::Empty,
+        });
+
+        for i in numeric_range.from as i64..numeric_range.to as i64 {
+            let value_index = util_get_value_index(VmValue::Number(i as f64), vm.borrow_mut());
+            vm.instructions.push(Instruction {
+                opcode: OpCode::PushValueU16,
+                arg: InstructionArg::Unsigned(value_index),
+            });
+            vm.instructions.push(Instruction {
+                opcode: OpCode::AppendArrayPush,
+                arg: InstructionArg::Empty,
+            });
+        }
     }
 
     fn compile_number(number: f64, vm: &mut VmState) {

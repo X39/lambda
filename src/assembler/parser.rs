@@ -102,8 +102,8 @@ pub mod parser {
 
     #[derive(Debug)]
     pub struct Property {
-        key: String,
-        value: Value,
+        pub key: String,
+        pub value: Value,
     }
 
     #[derive(Debug)]
@@ -120,8 +120,8 @@ pub mod parser {
 
     #[derive(Debug)]
     pub struct NumericRange {
-        from: f64,
-        to: f64,
+        pub from: f64,
+        pub to: f64,
     }
 
     use std::str::FromStr;
