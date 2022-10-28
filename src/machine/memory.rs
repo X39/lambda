@@ -1,19 +1,28 @@
 // Copyright x39
 
+use std::fmt::Pointer;
+use tracing::trace;
 use uuid::Uuid;
 use super::OpCode;
 
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub struct Instruction {
     pub opcode: OpCode,
     pub arg: InstructionArg,
 }
 
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum InstructionArg {
     Empty,
     Unsigned(u16),
     Signed(i16),
     Type(VmValueType),
 }
+
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum VmValueType {
     Null,
     Array,
@@ -21,11 +30,15 @@ pub enum VmValueType {
     Job,
 }
 
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub struct VmPair {
     key: String,
     value: VmValue,
 }
 
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum VmValue {
     Null,
     String(String),
@@ -36,55 +49,30 @@ pub enum VmValue {
     Job(Uuid),
 }
 
-impl PartialEq<Self> for VmPair {
-    fn eq(&self, other: &Self) -> bool {
-        self.key == other.key && self.value == other.value
-    }
-    fn ne(&self, other: &Self) -> bool {
-        !(self == other)
-    }
-}
-impl PartialEq<Self> for VmValue {
-    fn eq(&self, other: &Self) -> bool {
-        match self {
-            VmValue::Null => match other {
-                VmValue::Null => true,
-                _ => false
-            }
-            VmValue::String(l) => match other {
-                VmValue::String(r) => l == r,
-                _ => false
-            }
-            VmValue::Number(l) => match other {
-                VmValue::Number(r) => l == r,
-                _ => false
-            }
-            VmValue::Array(l) => match other {
-                VmValue::Array(r) => l == r,
-                _ => false
-            }
-            VmValue::Boolean(l) => match other {
-                VmValue::Boolean(r) => l == r,
-                _ => false
-            }
-            VmValue::Object(l) => match other {
-                VmValue::Object(r) => l == r,
-                _ => false
-            }
-            VmValue::Job(l) => match other {
-                VmValue::Job(r) => l == r,
-                _ => false
-            }
-        }
-    }
-    fn ne(&self, other: &Self) -> bool {
-        !(self == other)
-    }
-}
-
 pub struct VmState {
     pub value_list: Vec<VmValue>,
     pub function_list: Vec<String>,
     pub instructions: Vec<Instruction>,
     pub instruction_index: u32,
+}
+impl std::fmt::Debug for VmState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f, "Values: {}", self.value_list.len())?;
+        for (index, it) in self.value_list.iter().enumerate() {
+            write!(f, "    {:04}: ", index)?;
+            it.fmt(f)?;
+            writeln!(f)?;
+        }
+        writeln!(f, "Functions: {}", self.function_list.len())?;
+        for (index, it) in self.function_list.iter().enumerate() {
+            writeln!(f, "    {:04}: {}", index, it)?;
+        }
+        writeln!(f, "Instructions: {} (at {})", self.value_list.len(), self.instruction_index)?;
+        for (index, it) in self.instructions.iter().enumerate() {
+            write!(f, "    {:04}: ", index)?;
+            it.fmt(f)?;
+            writeln!(f)?;
+        }
+        Ok(())
+    }
 }

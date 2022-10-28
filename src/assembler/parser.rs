@@ -1,4 +1,3 @@
-
 pub mod parser {
     /// X39 File
     #[derive(Debug)]
@@ -11,6 +10,7 @@ pub mod parser {
     pub enum Statement<'a> {
         Await(AwaitStatement<'a>),
         Abort(&'a str),
+        AbortAll(&'a str),
         Exit,
         Comment,
         Start(Call<'a>),
@@ -21,9 +21,9 @@ pub mod parser {
 
     #[derive(Debug)]
     pub struct ForLoopStatement<'a> {
-        ident: &'a str,
-        over: ForLoopInstruction<'a>,
-        code: Vec<Statement<'a>>,
+        pub ident: &'a str,
+        pub over: ForLoopInstruction<'a>,
+        pub code: Vec<Statement<'a>>,
     }
 
     #[derive(Debug)]
@@ -41,8 +41,8 @@ pub mod parser {
 
     #[derive(Debug)]
     pub struct AssignmentStatement<'a> {
-        ident: &'a str,
-        value: AssignmentType<'a>,
+        pub ident: &'a str,
+        pub value: AssignmentType<'a>,
     }
 
     #[derive(Debug)]
@@ -67,14 +67,14 @@ pub mod parser {
 
     #[derive(Debug)]
     pub struct IfElseStatement<'a> {
-        if_statement: IfStatement<'a>,
-        else_statement: Option<ElseStatement<'a>>,
+        pub if_statement: IfStatement<'a>,
+        pub else_statement: Option<ElseStatement<'a>>,
     }
 
     #[derive(Debug)]
     pub struct IfStatement<'a> {
-        condition: IfStatementCondition<'a>,
-        code: Vec<Statement<'a>>,
+        pub condition: IfStatementCondition<'a>,
+        pub code: Vec<Statement<'a>>,
     }
 
     #[derive(Debug)]
@@ -356,9 +356,12 @@ pub mod parser {
 
     pub fn parse_abort(input: &str) -> IResult<&str, Statement> {
         trace!("Entering parse_abort with {:?}", input);
-        let (input, ident) = preceded(delR!(tag("abort")), parse_ident)(input)?;
-        trace!("Exiting parse_abort with {:?}", ident);
-        Ok((input, Statement::Abort(ident)))
+        let (input, abort) = preceded(delR!(tag("abort")), alt((
+            preceded(delR!(tag("all")), map(parse_ident, |ident| Statement::AbortAll(ident))),
+            map(parse_ident, |ident| Statement::Abort(ident)),
+        )))(input)?;
+        trace!("Exiting parse_abort with {:?}", abort);
+        Ok((input, abort))
     }
 
     pub fn parse_exit(input: &str) -> IResult<&str, Statement> {
@@ -652,6 +655,7 @@ pub mod parser {
 
 #[cfg(test)]
 mod tests {
+    use nom::Err::Error;
     use tracing_test::traced_test;
 
     const TEST_FILE1: &str = r#"
@@ -672,7 +676,6 @@ mod tests {
         exit;
     }
     else {
-        # Something ain't working here
         collection = await generateFunc(12);
         list = [];
         for it in collection {
@@ -723,6 +726,8 @@ mod tests {
     fn test_file1() -> Result<(), Box<dyn std::error::Error>> {
         // cargo test -- --nocapture
         let file = super::parser::parse_x39file(TEST_FILE1)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -731,6 +736,8 @@ mod tests {
     #[traced_test]
     fn test_file2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_x39file(TEST_FILE2)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -739,6 +746,8 @@ mod tests {
     #[traced_test]
     fn test_file3() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_x39file(TEST_FILE3)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -755,6 +764,8 @@ mod tests {
     #[traced_test]
     fn test_parse_comment_with_contents() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_comment("#asdasdasdasd\n")?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -763,6 +774,8 @@ mod tests {
     #[traced_test]
     fn test_parse_comment_empty() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_comment("#\n")?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -771,6 +784,8 @@ mod tests {
     #[traced_test]
     fn test_parse_obj_empty_1() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_obj("{}")?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -779,6 +794,8 @@ mod tests {
     #[traced_test]
     fn test_parse_obj_empty_2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_obj("{ }")?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -787,6 +804,8 @@ mod tests {
     #[traced_test]
     fn test_parse_obj_single_data() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_obj(r#"{ "foo": "bar" }"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -795,6 +814,8 @@ mod tests {
     #[traced_test]
     fn test_parse_obj_multi_data() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_obj(r#"{ "foo": "bar", "bar" :"foo" }"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -803,6 +824,8 @@ mod tests {
     #[traced_test]
     fn test_parse_obj_multi_data_comma_terminated() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_obj(r#"{ "foo": "bar", "bar" :"foo" ,}"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -811,6 +834,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_empty_1() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array(r#"[]"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -819,6 +844,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_empty_2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array(r#"[ ]"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -835,6 +862,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_single_value_2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array(r#"[2]"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -843,6 +872,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_multi_value() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array(r#"[1,2]"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -851,6 +882,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_multi_value_comma_terminated() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array(r#"[1, 2 , 3,]"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -859,6 +892,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_body_single_value_1() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array_body(r#"1"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -867,6 +902,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_body_single_value_2() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array_body(r#" 2 "#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -875,6 +912,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_body_multi_value() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array_body(r#"1,2"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -883,6 +922,8 @@ mod tests {
     #[traced_test]
     fn test_parse_array_body_multi_value_comma_terminated() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_array_body(r#"1, 2 , 3,"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -891,6 +932,8 @@ mod tests {
     #[traced_test]
     fn test_parse_numeric_literal_int() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_numeric_literal(r#"1"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -899,6 +942,8 @@ mod tests {
     #[traced_test]
     fn test_parse_numeric_literal_float() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_numeric_literal(r#"1.5"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -907,6 +952,8 @@ mod tests {
     #[traced_test]
     fn test_parse_value_numeric_literal_int() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_value(r#"1"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -915,6 +962,8 @@ mod tests {
     #[traced_test]
     fn test_parse_value_numeric_literal_float() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_value(r#"1.5"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -923,6 +972,8 @@ mod tests {
     #[traced_test]
     fn test_parse_value_numeric_range() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_value(r#"1..5"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -931,6 +982,8 @@ mod tests {
     #[traced_test]
     fn test_parse_await_call_or_ident_with_ident() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_await_call_or_ident(r#"await ident"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -939,6 +992,8 @@ mod tests {
     #[traced_test]
     fn test_parse_await_with_ident() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_await(r#"await ident"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -947,6 +1002,8 @@ mod tests {
     #[traced_test]
     fn test_parse_await_with_call_alpha() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_await(r#"await call({})"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -955,6 +1012,8 @@ mod tests {
     #[traced_test]
     fn test_parse_await_with_call_alphanumeric() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_await(r#"await call123({})"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -963,6 +1022,8 @@ mod tests {
     #[traced_test]
     fn test_parse_assign_await_call_alpha() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_assign(r#"ident = await call({})"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -971,6 +1032,8 @@ mod tests {
     #[traced_test]
     fn test_parse_assign_await_call_alphanumeric() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_assign(r#"ident123 = await call123({})"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -980,6 +1043,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statement_with_await_ident() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statement(r#"await ident;"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -988,6 +1053,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statements_with_double_await_ident() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statements(r#"await ident; await ident;"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -996,6 +1063,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statements_with_assign_start_and_await() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statements(r#"ident = start foo({}); await ident;"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1004,6 +1073,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statement_with_assign_await_call() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statement(r#"ident = await foo({});"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1012,6 +1083,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statements_with_assign_await_call_twice() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statements(r#"ident = await foo({}); ident = await foo({});"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1020,6 +1093,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statements_with_if_else_chain_twice() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statements(r#"if await foo {} else if await bar {} else {} if await foo {} else if await bar {} else {}"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1028,6 +1103,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statement_with_if_else_chain() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statements(r#"if await foo {} else if await bar {} else {}"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1036,6 +1113,8 @@ mod tests {
     #[traced_test]
     fn test_parse_statement_with_if_else_both_content() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_statements(r#"if await foo { exit; } else {exit;}"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1044,6 +1123,8 @@ mod tests {
     #[traced_test]
     fn test_parse_call_with_value_from_ident() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_call(r#"foo(ident)"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1052,6 +1133,8 @@ mod tests {
     #[traced_test]
     fn test_parse_call_with_no_value() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_call(r#"foo()"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1060,6 +1143,18 @@ mod tests {
     #[traced_test]
     fn test_parse_if_else_chain() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_if_else(r#"if await foo {} else if await bar {} else {}"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
+        println!("{:?}", file.1);
+        Ok(())
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_parse_if_else_chain_exit() -> Result<(), Box<dyn std::error::Error>> {
+        let file = super::parser::parse_if_else(r#"if await foo {exit;} else if await bar {exit;} else {exit;}"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1068,6 +1163,8 @@ mod tests {
     #[traced_test]
     fn test_parse_ident_alpha() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_ident(r#"abcdefghijklmnopqrstuvwxyz"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1076,6 +1173,8 @@ mod tests {
     #[traced_test]
     fn test_parse_ident_alphanumeric() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_ident(r#"abcdefghijklmnopqrstuvwxyz0123456789"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1084,6 +1183,8 @@ mod tests {
     #[traced_test]
     fn test_parse_constant_string() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_constant_string(r#""foobar""#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1092,6 +1193,8 @@ mod tests {
     #[traced_test]
     fn test_parse_constant_with_true() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_constant(r#"true"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1100,6 +1203,8 @@ mod tests {
     #[traced_test]
     fn test_parse_constant_with_false() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_constant(r#"false"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1108,6 +1213,8 @@ mod tests {
     #[traced_test]
     fn test_parse_constant_with_null() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_constant(r#"null"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1116,6 +1223,8 @@ mod tests {
     #[traced_test]
     fn test_parse_constant_with_string() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_constant(r#""foobar""#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }
@@ -1124,6 +1233,8 @@ mod tests {
     #[traced_test]
     fn test_parse_for_in_range() -> Result<(), Box<dyn std::error::Error>> {
         let file = super::parser::parse_for(r#"for it in 0..20 { list += start handleIt(it); }"#)?;
+        if !file.0.is_empty()
+        { return Err(Box::from("File not fully yielded")); }
         println!("{:?}", file.1);
         Ok(())
     }

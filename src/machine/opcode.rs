@@ -1,10 +1,11 @@
 // Copyright x39
 
-///
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum OpCode {
     /// no operation.
     NoOp,
-    /// End processing.
+    /// POP a value from the stack and End processing.
     Exit,
     /// PUSH a value from the value list at index u16:ARG to stack.
     PushValueU16,
@@ -25,6 +26,10 @@ pub enum OpCode {
     GetVariableOfType,
     /// POP a job and halt the execution until it completed.
     Await,
+    /// POP a job and abort its scheduled execution if possible.
+    Abort,
+    /// POP an array of jobs and abort the scheduled execution of all if possible.
+    AbortAll,
     /// POP an array of jobs and halt the execution until one of them completed.
     AwaitAny,
     /// POP an array of jobs and halt the execution until all have completed.
@@ -34,7 +39,7 @@ pub enum OpCode {
     Call,
     /// POP a string to interpret as function name and PUSH a job,
     /// executing the function.
-    CallVoid,
+    CallNoArg,
     /// POP a value from the stack and POP an array from the stack and append the value
     /// to the array and PUSH the array back onto the stack.
     AppendArrayPush,
@@ -42,4 +47,26 @@ pub enum OpCode {
     /// and append a property to the object with the string as key and the value as value and
     /// PUSH the object back onto the stack.
     AppendPropertyPush,
+    /// POP a string and POP a value and assign the value to a variable named as the string.
+    Assign,
+    /// POP a value from the stack and dispose of it immediate.
+    Pop,
+    /// Jump i16::ARG instructions.
+    Jump,
+    /// POP a boolean value from the stack and jump i16::ARG instructions if it is false.
+    JumpIfFalse,
+    /// POP a boolean value from the stack and jump i16::ARG instructions if it is true.
+    JumpIfTrue,
+    /// Specialized jump instruction for foreach support.
+    /// -0: POP an index
+    /// -1: POP an array or object
+    /// If array or object has index elements:
+    /// 0: PUSH array or object
+    /// 1: PUSH index + 1
+    /// 2: PUSH value at index of array or object
+    /// If index out of range:
+    /// Jump i16::ARG instructions.
+    JumpIterate,
+    /// POP 2 elements and PUSH them in reverse order.
+    Swap2,
 }
