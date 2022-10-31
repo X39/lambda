@@ -3,10 +3,12 @@
 use std::fmt::Pointer;
 use tracing::trace;
 use uuid::Uuid;
+use serde::{Serialize, Deserialize};
 use super::OpCode;
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Instruction {
     pub opcode: OpCode,
     pub arg: InstructionArg,
@@ -14,6 +16,7 @@ pub struct Instruction {
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub enum InstructionArg {
     Empty,
     Unsigned(u16),
@@ -23,6 +26,7 @@ pub enum InstructionArg {
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub enum VmValueType {
     Null,
     Array,
@@ -32,6 +36,7 @@ pub enum VmValueType {
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct VmPair {
     key: String,
     value: VmValue,
@@ -39,6 +44,7 @@ pub struct VmPair {
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub enum VmValue {
     Null,
     String(String),
@@ -49,6 +55,7 @@ pub enum VmValue {
     Job(Uuid),
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct VmState {
     pub value_list: Vec<VmValue>,
     pub function_list: Vec<String>,

@@ -1,7 +1,9 @@
 // Copyright x39
+use serde::{Serialize, Deserialize};
 
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub enum OpCode {
     /// no operation.
     NoOp,
