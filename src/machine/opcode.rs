@@ -2,12 +2,12 @@
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Copy, Clone)]
 #[derive(Serialize, Deserialize)]
 pub enum OpCode {
     /// no operation.
     NoOp,
-    /// POP a value from the stack and End processing.
+    /// End processing.
     Exit,
     /// PUSH a value from the value list at index u16:ARG to stack.
     PushValueU16,

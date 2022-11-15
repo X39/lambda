@@ -1,5 +1,5 @@
 // Copyright x39
 
-mod parser;
+pub mod parser;
 mod parser_string;
-mod compiler;
+pub mod compiler;

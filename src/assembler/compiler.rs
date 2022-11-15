@@ -1,9 +1,9 @@
-mod compiler {
+pub mod compiler {
     use std::borrow::{Borrow, BorrowMut};
     use tracing::trace;
 
     use crate::assembler::parser::parser::{AssignmentStatement, AssignmentType, AssignStatementData, AwaitCallOrIdentProduction, AwaitStatement, Call, CallValue, ElseStatement, ForLoopInstruction, ForLoopStatement, IfElseStatement, IfStatementCondition, NumericRange, Property, Statement, Value, X39File};
-    use crate::machine::{Instruction, InstructionArg, OpCode, VirtualMachine, VmState, VmValue, VmValueType};
+    use crate::machine::{Instruction, InstructionArg, OpCode, VmState, VmValue, VmValueType};
 
 
     pub fn compile(file: X39File) -> VmState {
@@ -245,6 +245,7 @@ mod compiler {
         });
         trace!("Exiting compile_abort with {} instructions", vm.instructions.len());
     }
+
     fn compile_abort_all(abort_ident: &&str, vm: &mut VmState) {
         trace!("Entering compile_abort with {} instructions", vm.instructions.len());
         let value_index = util_get_value_index(VmValue::String(abort_ident.to_string()), vm.borrow_mut());
@@ -599,6 +600,7 @@ mod tests {
         trace!("{:?}", vm_state);
         Ok(())
     }
+
     const TEST_FILE4: &str = r#"
     # comment
     if await conditionFunc() {
@@ -651,89 +653,89 @@ mod tests {
         let vm_state = super::compiler::compile(file);
         let expected_code = vec![
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // await fancy1()
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushValueU16,
                 arg: InstructionArg::Unsigned(0),
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::CallNoArg,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Await,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::JumpIfFalse,
                 arg: InstructionArg::Signed(3),
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::Jump,
                 arg: InstructionArg::Signed(2),
             },
             // else { ... }
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
@@ -770,153 +772,153 @@ mod tests {
         let vm_state = super::compiler::compile(file);
         let expected_code = vec![
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // await fancy1()
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushValueU16,
                 arg: InstructionArg::Unsigned(0),
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::CallNoArg,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Await,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::JumpIfFalse,
                 arg: InstructionArg::Signed(3),
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::Jump,
                 arg: InstructionArg::Signed(16),
             },
             // await fancy1()
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushValueU16,
                 arg: InstructionArg::Unsigned(0),
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::CallNoArg,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Await,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::JumpIfFalse,
                 arg: InstructionArg::Signed(3),
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::Jump,
                 arg: InstructionArg::Signed(9),
             },
             // await fancy1()
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushValueU16,
                 arg: InstructionArg::Unsigned(0),
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::CallNoArg,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Await,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::JumpIfFalse,
                 arg: InstructionArg::Signed(3),
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // if ... { ... }
-            Instruction{
+            Instruction {
                 opcode: OpCode::Jump,
                 arg: InstructionArg::Signed(2),
             },
             // else { ... }
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },
             // exit;
-            Instruction{
+            Instruction {
                 opcode: OpCode::PushNull,
                 arg: InstructionArg::Empty,
             },
-            Instruction{
+            Instruction {
                 opcode: OpCode::Exit,
                 arg: InstructionArg::Empty,
             },

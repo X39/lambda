@@ -7,7 +7,7 @@ use serde::{Serialize, Deserialize};
 use super::OpCode;
 
 #[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 #[derive(Serialize, Deserialize)]
 pub struct Instruction {
     pub opcode: OpCode,
@@ -15,7 +15,7 @@ pub struct Instruction {
 }
 
 #[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 #[derive(Serialize, Deserialize)]
 pub enum InstructionArg {
     Empty,
@@ -25,7 +25,7 @@ pub enum InstructionArg {
 }
 
 #[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 #[derive(Serialize, Deserialize)]
 pub enum VmValueType {
     Null,
@@ -35,7 +35,7 @@ pub enum VmValueType {
 }
 
 #[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 #[derive(Serialize, Deserialize)]
 pub struct VmPair {
     key: String,
@@ -43,7 +43,7 @@ pub struct VmPair {
 }
 
 #[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 #[derive(Serialize, Deserialize)]
 pub enum VmValue {
     Null,
@@ -60,7 +60,7 @@ pub struct VmState {
     pub value_list: Vec<VmValue>,
     pub function_list: Vec<String>,
     pub instructions: Vec<Instruction>,
-    pub instruction_index: u32,
+    pub instruction_index: usize,
 }
 impl std::fmt::Debug for VmState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
