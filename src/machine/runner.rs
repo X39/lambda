@@ -53,13 +53,6 @@ impl VmState {
             },
             OpCode::GetVariable => {},
             OpCode::GetVariableOfType => {},
-            OpCode::Await => {},
-            OpCode::Abort => {},
-            OpCode::AbortAll => {},
-            OpCode::AwaitAny => {},
-            OpCode::AwaitAll => {},
-            OpCode::Call => {},
-            OpCode::CallNoArg => {},
             OpCode::AppendArrayPush => {},
             OpCode::AppendPropertyPush => {},
             OpCode::Assign => {},
@@ -69,6 +62,14 @@ impl VmState {
             OpCode::JumpIfTrue => {},
             OpCode::JumpIterate => {},
             OpCode::Swap2 => {},
+
+            OpCode::Await => {},
+            OpCode::Abort => {},
+            OpCode::AbortAll => {},
+            OpCode::AwaitAny => {},
+            OpCode::AwaitAll => {},
+            OpCode::Call => {},
+            OpCode::CallNoArg => {},
         };
         Ok(())
     }
