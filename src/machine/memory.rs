@@ -38,8 +38,8 @@ pub enum VmValueType {
 #[derive(PartialEq, Clone)]
 #[derive(Serialize, Deserialize)]
 pub struct VmPair {
-    key: String,
-    value: VmValue,
+    pub key: String,
+    pub value: VmValue,
 }
 
 #[derive(Debug)]

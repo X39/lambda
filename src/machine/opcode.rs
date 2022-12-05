@@ -71,4 +71,6 @@ pub enum OpCode {
     JumpIterate,
     /// POP 2 elements and PUSH them in reverse order.
     Swap2,
+    /// POP a value and print it to console
+    PrintToConsole,
 }

@@ -35,6 +35,7 @@ pub mod compiler {
                 Statement::IfElse(if_else_statement) => compile_if_else(if_else_statement, vm.borrow_mut()),
                 Statement::ForLoop(for_loop_statement) => compile_for_loop(for_loop_statement, vm.borrow_mut()),
                 Statement::Assignment(assignment_statement) => compile_assignment(assignment_statement, vm.borrow_mut()),
+                Statement::Print(ident) => compile_print(ident, vm.borrow_mut()),
             }
         }
     }
@@ -244,6 +245,24 @@ pub mod compiler {
             arg: InstructionArg::Empty,
         });
         trace!("Exiting compile_abort with {} instructions", vm.instructions.len());
+    }
+
+    fn compile_print(ident: &&str, vm: &mut VmState) {
+        trace!("Entering compile_print with {} instructions", vm.instructions.len());
+        let value_index = util_get_value_index(VmValue::String(ident.to_string()), vm.borrow_mut());
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PushValueU16,
+            arg: InstructionArg::Unsigned(value_index),
+        });
+        vm.instructions.push(Instruction {
+            opcode: OpCode::GetVariable,
+            arg: InstructionArg::Empty,
+        });
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PrintToConsole,
+            arg: InstructionArg::Empty,
+        });
+        trace!("Exiting compile_print with {} instructions", vm.instructions.len());
     }
 
     fn compile_abort_all(abort_ident: &&str, vm: &mut VmState) {

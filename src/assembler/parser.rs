@@ -17,6 +17,7 @@ pub mod parser {
         IfElse(IfElseStatement<'a>),
         ForLoop(ForLoopStatement<'a>),
         Assignment(AssignmentStatement<'a>),
+        Print(&'a str),
     }
 
     #[derive(Debug)]
@@ -216,6 +217,7 @@ pub mod parser {
         let (input, statement) = alt((
             parse_comment,
             terminated(parse_await, semicolon!()),
+            terminated(parse_print, semicolon!()),
             terminated(parse_abort, semicolon!()),
             terminated(parse_exit, semicolon!()),
             terminated(parse_start, semicolon!()),
@@ -322,6 +324,14 @@ pub mod parser {
         ))(input)?;
         trace!("Exiting parse_await with {:?}", await_statement);
         Ok((input, Statement::Await(await_statement)))
+    }
+
+    pub fn parse_print(input: &str) -> IResult<&str, Statement> {
+        // start ::= start call;
+        trace!("Entering parse_print with {:?}", input);
+        let (input, ident) = preceded(delR!(tag("print")), parse_ident)(input)?;
+        trace!("Exiting parse_print with {:?}", ident);
+        Ok((input, Statement::Print(ident)))
     }
 
     pub fn parse_start(input: &str) -> IResult<&str, Statement> {
