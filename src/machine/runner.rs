@@ -4,9 +4,9 @@ use crate::machine::{Instruction, InstructionArg, OpCode, VmPair, VmValue, VmVal
 use crate::machine::VmValueType::Array;
 use crate::VmState;
 
-pub struct VmStack<'a> {
-    pub data: &'a mut Vec<VmValue>,
-    pub variables: &'a mut Vec<VmPair>,
+pub struct VmStack {
+    pub data: Vec<VmValue>,
+    pub variables: Vec<VmPair>,
 }
 
 impl VmValue {
@@ -115,7 +115,7 @@ impl InstructionArg {
     }
 }
 
-impl VmStack<'_> {
+impl VmStack {
     fn pop_object(&mut self) -> Result<Vec<VmPair>, &'static str> {
         let candidate = self.pop_value()?;
         match candidate {
@@ -170,14 +170,14 @@ impl VmState {
         self.instructions.len() <= self.instruction_index
     }
     fn next_instruction(&mut self) -> Result<Instruction, &'static str> {
-        if self.instructions.len() >= self.instruction_index
+        if self.is_done()
         { return Err("End of instructions reached"); }
 
         let instruction = self.instructions[self.instruction_index].clone();
         self.instruction_index += 1;
         return Ok(instruction);
     }
-    pub fn step<'a, 'b>(&mut self, stack: &'b mut VmStack<'b>) -> Result<(), &'static str> {
+    pub fn step<'a, 'b>(&'a mut self, stack: &'b mut VmStack) -> Result<(), &'static str> {
         let instruction = self.next_instruction()?;
         match instruction.opcode {
             OpCode::NoOp => { /* empty */ }
@@ -255,6 +255,7 @@ impl VmState {
                 let value = stack.pop_value()?;
                 let mut array = stack.pop_array()?;
                 array.push(value);
+                stack.data.push(VmValue::Array(array));
             }
             OpCode::AppendPropertyPush => {
                 let value = stack.pop_value()?;
@@ -264,6 +265,7 @@ impl VmState {
                     key,
                     value,
                 });
+                stack.data.push(VmValue::Object(object));
             }
             OpCode::Assign => {
                 let key = stack.pop_string()?;

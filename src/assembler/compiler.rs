@@ -68,18 +68,19 @@ pub mod compiler {
 
     fn compile_assignment_assign(assign: &AssignStatementData, ident: String, vm: &mut VmState) {
         trace!("Entering compile_assignment_assign with {} instructions", vm.instructions.len());
-        // PUSH variable name to stack for assignment in the end
+        // Reserve variable name index
         let value_index = util_get_value_index(VmValue::String(ident), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
         // PUSH the value to append on the stack
         match assign {
             AssignStatementData::Value(value) => compile_value(value, vm),
             AssignStatementData::Await(await_call_or_ident) => compile_await_call_or_ident(await_call_or_ident, vm),
             AssignStatementData::Start(start) => compile_start(start, vm),
         }
+        // PUSH variable name to stack for assignment in the end
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PushValueU16,
+            arg: InstructionArg::Unsigned(value_index),
+        });
         // Assign array to variable
         vm.instructions.push(Instruction {
             opcode: OpCode::Assign,
@@ -90,12 +91,8 @@ pub mod compiler {
 
     fn compile_assignment_append(append: &AssignStatementData, ident: String, vm: &mut VmState) {
         trace!("Entering compile_assignment_append with {} instructions", vm.instructions.len());
-        // PUSH variable name to stack for assignment in the end
+        // Reserve variable name value index
         let value_index = util_get_value_index(VmValue::String(ident), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
         // PUSH array in variable to stack
         vm.instructions.push(Instruction {
             opcode: OpCode::PushValueU16,
@@ -115,6 +112,11 @@ pub mod compiler {
         vm.instructions.push(Instruction {
             opcode: OpCode::AppendArrayPush,
             arg: InstructionArg::Empty,
+        });
+        // PUSH variable name to stack for assignment in the end
+        vm.instructions.push(Instruction {
+            opcode: OpCode::PushValueU16,
+            arg: InstructionArg::Unsigned(value_index),
         });
         // Assign array to variable
         vm.instructions.push(Instruction {
@@ -150,11 +152,6 @@ pub mod compiler {
         vm.instructions.push(Instruction {
             opcode: OpCode::PushValueU16,
             arg: InstructionArg::Unsigned(value_index),
-        });
-        // Swap variable and value for assign to work
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Swap2,
-            arg: InstructionArg::Empty,
         });
         // Assign iterated element to variable
         vm.instructions.push(Instruction {

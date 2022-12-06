@@ -4,7 +4,7 @@ extern crate core;
 
 use std::borrow::{Borrow, BorrowMut};
 use std::error::Error;
-use crate::machine::{VmStack, VmState};
+use crate::machine::{VmPair, VmStack, VmState, VmValue};
 
 mod machine;
 mod assembler;
@@ -22,19 +22,27 @@ fn create_vm_state(s: &str) -> Result<VmState, &str> {
     return Ok(vm_state);
 }
 
-fn vm_state_step<'a>(state: &'a mut VmState, stack: &'a mut VmStack<'a>) {
+fn vm_state_step<'a>(state: &'a mut VmState, stack: &'a mut VmStack) {
     while !state.is_done() {
         match state.step(stack) {
             Ok(_) => {}
-            Err(s) => println!("{}", s),
+            Err(s) => {
+                println!("{}", s);
+                return;
+            },
         }
     }
 }
 
 fn main() {
-    let vm_state = create_vm_state("\
-    a = [];\
+    let mut vm_state = create_vm_state("\
+    a = [1,2];\
     print a;\
-    a += 1;\
+    a += 3;\
     print a;").unwrap();
+    let mut vm_stack = VmStack {
+        variables: vec![],
+        data: vec![],
+    };
+    vm_state_step(&mut vm_state, &mut vm_stack);
 }
