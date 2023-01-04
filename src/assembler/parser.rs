@@ -154,7 +154,6 @@ pub mod parser {
     use nom::sequence::tuple;
     use tracing::trace;
     use crate::assembler::parser_string::parse_string;
-    use super::*;
 
     #[macro_export]
     macro_rules! delO {
@@ -665,7 +664,6 @@ pub mod parser {
 
 #[cfg(test)]
 mod tests {
-    use nom::Err::Error;
     use tracing_test::traced_test;
 
     const TEST_FILE1: &str = r#"

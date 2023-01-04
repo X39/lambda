@@ -2,10 +2,8 @@
 
 extern crate core;
 
-use std::borrow::{Borrow, BorrowMut};
-use std::error::Error;
-use crate::machine::{VmPair, VmStack, VmState, VmValue};
 
+use crate::machine::*;
 mod machine;
 mod assembler;
 

@@ -82,10 +82,7 @@ pub mod compiler {
             arg: InstructionArg::Unsigned(value_index),
         });
         // Assign array to variable
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Assign,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::Assign));
         trace!("Exiting compile_assignment_assign with {} instructions", vm.instructions.len());
     }
 
@@ -109,20 +106,14 @@ pub mod compiler {
             AssignStatementData::Start(start) => compile_start(start, vm),
         }
         // Append the value to the array
-        vm.instructions.push(Instruction {
-            opcode: OpCode::AppendArrayPush,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::AppendArrayPush));
         // PUSH variable name to stack for assignment in the end
         vm.instructions.push(Instruction {
             opcode: OpCode::PushValueU16,
             arg: InstructionArg::Unsigned(value_index),
         });
         // Assign array to variable
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Assign,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::Assign));
         trace!("Exiting compile_assignment_append with {} instructions", vm.instructions.len());
     }
 
@@ -154,10 +145,7 @@ pub mod compiler {
             arg: InstructionArg::Unsigned(value_index),
         });
         // Assign iterated element to variable
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Assign,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::Assign));
         // Emit code
         compile_statements(for_loop_statement.code.borrow(), vm);
         // Emit jump back to loop
@@ -237,10 +225,7 @@ pub mod compiler {
             opcode: OpCode::GetVariableOfType,
             arg: InstructionArg::Type(VmValueType::Job),
         });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Abort,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::Abort));
         trace!("Exiting compile_abort with {} instructions", vm.instructions.len());
     }
 
@@ -251,14 +236,8 @@ pub mod compiler {
             opcode: OpCode::PushValueU16,
             arg: InstructionArg::Unsigned(value_index),
         });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariable,
-            arg: InstructionArg::Empty,
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PrintToConsole,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::GetVariable));
+        vm.instructions.push(Instruction::new1(OpCode::PrintToConsole));
         trace!("Exiting compile_print with {} instructions", vm.instructions.len());
     }
 
@@ -273,10 +252,7 @@ pub mod compiler {
             opcode: OpCode::GetVariableOfType,
             arg: InstructionArg::Type(VmValueType::Job),
         });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::AbortAll,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::AbortAll));
         trace!("Exiting compile_abort with {} instructions", vm.instructions.len());
     }
 
@@ -296,10 +272,7 @@ pub mod compiler {
             AwaitCallOrIdentProduction::Call(call) => compile_call(call, vm),
             AwaitCallOrIdentProduction::Ident(ident) => compile_ident_job(ident, vm),
         }
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Await,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::Await));
         trace!("Exiting compile_await_call_or_ident with {} instructions", vm.instructions.len());
     }
 
@@ -350,10 +323,7 @@ pub mod compiler {
 
     fn compile_array(array: &Vec<Value>, vm: &mut VmState) {
         trace!("Entering compile_array with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushEmptyArray,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::PushEmptyArray));
 
         for it in array.iter() {
             compile_value(it, vm);
@@ -367,10 +337,7 @@ pub mod compiler {
 
     fn compile_object(object: &Vec<Property>, vm: &mut VmState) {
         trace!("Entering compile_object with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushEmptyObject,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::PushEmptyObject));
 
         for it in object.iter() {
             // Push Key
@@ -394,10 +361,7 @@ pub mod compiler {
 
     fn compile_numeric_range(numeric_range: &NumericRange, vm: &mut VmState) {
         trace!("Entering compile_numeric_range with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushEmptyArray,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::PushEmptyArray));
 
         for i in numeric_range.from as i64..numeric_range.to as i64 {
             let value_index = util_get_value_index(VmValue::Number(i as f64), vm.borrow_mut());
@@ -435,10 +399,7 @@ pub mod compiler {
 
     fn compile_null(vm: &mut VmState) {
         trace!("Entering compile_null with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushNull,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::PushNull));
         trace!("Exiting compile_null with {} instructions", vm.instructions.len());
     }
 
@@ -458,10 +419,7 @@ pub mod compiler {
             opcode: OpCode::PushValueU16,
             arg: InstructionArg::Unsigned(value_index),
         });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariable,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::GetVariable));
         trace!("Exiting compile_ident with {} instructions", vm.instructions.len());
     }
 
@@ -490,10 +448,7 @@ pub mod compiler {
             opcode: OpCode::GetVariableOfType,
             arg: InstructionArg::Type(VmValueType::ArrayOfJobs),
         });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::AwaitAll,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::AwaitAll));
         trace!("Exiting compile_await_all with {} instructions", vm.instructions.len());
     }
 
@@ -508,30 +463,20 @@ pub mod compiler {
             opcode: OpCode::GetVariableOfType,
             arg: InstructionArg::Type(VmValueType::ArrayOfJobs),
         });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::AwaitAny,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::AwaitAny));
         trace!("Exiting compile_await_any with {} instructions", vm.instructions.len());
     }
 
     fn compile_exit(vm: &mut VmState) {
         trace!("Entering compile_exit with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushNull,
-            arg: InstructionArg::Empty,
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Exit,
-            arg: InstructionArg::Empty,
-        });
+        vm.instructions.push(Instruction::new1(OpCode::PushNull));
+        vm.instructions.push(Instruction::new1(OpCode::Exit));
         trace!("Exiting compile_exit with {} instructions", vm.instructions.len());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::empty;
     use tracing::trace;
     use tracing_test::traced_test;
     use crate::machine::{Instruction, InstructionArg, OpCode};
@@ -574,7 +519,7 @@ mod tests {
     #[test]
     #[traced_test]
     fn test_file1() -> Result<(), Box<dyn std::error::Error>> {
-        let (input, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE1)?;
+        let (_, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE1)?;
         let vm_state = super::compiler::compile(file);
         trace!("{:?}", vm_state);
         Ok(())
@@ -590,7 +535,7 @@ mod tests {
     #[test]
     #[traced_test]
     fn test_file2() -> Result<(), Box<dyn std::error::Error>> {
-        let (input, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE2)?;
+        let (_, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE2)?;
         let vm_state = super::compiler::compile(file);
         trace!("{:?}", vm_state);
         Ok(())
@@ -611,7 +556,7 @@ mod tests {
     #[test]
     #[traced_test]
     fn test_file3() -> Result<(), Box<dyn std::error::Error>> {
-        let (input, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE3)?;
+        let (_, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE3)?;
         let vm_state = super::compiler::compile(file);
         trace!("{:?}", vm_state);
         Ok(())
@@ -642,7 +587,7 @@ mod tests {
     #[test]
     #[traced_test]
     fn test_file4() -> Result<(), Box<dyn std::error::Error>> {
-        let (input, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE4)?;
+        let (_, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE4)?;
         let vm_state = super::compiler::compile(file);
         trace!("{:?}", vm_state);
         Ok(())
@@ -665,44 +610,44 @@ mod tests {
     #[test]
     #[traced_test]
     fn test_if_else() -> Result<(), Box<dyn std::error::Error>> {
-        let (input, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE_IF_ELSE)?;
+        let (_, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE_IF_ELSE)?;
         let vm_state = super::compiler::compile(file);
         let expected_code = vec![
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // await fancy1()
             Instruction {
@@ -711,11 +656,11 @@ mod tests {
             },
             Instruction {
                 opcode: OpCode::CallNoArg,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Await,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -725,11 +670,11 @@ mod tests {
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -740,20 +685,20 @@ mod tests {
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
         ];
         assert_eq!(vm_state.instructions, expected_code);
@@ -784,44 +729,44 @@ mod tests {
     #[test]
     #[traced_test]
     fn test_if_else_if_else_if_else() -> Result<(), Box<dyn std::error::Error>> {
-        let (input, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE_IF_ELSE_IF_ELSE_IF_ELSE)?;
+        let (_, file) = crate::assembler::parser::parser::parse_x39file(TEST_FILE_IF_ELSE_IF_ELSE_IF_ELSE)?;
         let vm_state = super::compiler::compile(file);
         let expected_code = vec![
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // await fancy1()
             Instruction {
@@ -830,11 +775,11 @@ mod tests {
             },
             Instruction {
                 opcode: OpCode::CallNoArg,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Await,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -844,11 +789,11 @@ mod tests {
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -862,11 +807,11 @@ mod tests {
             },
             Instruction {
                 opcode: OpCode::CallNoArg,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Await,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -876,11 +821,11 @@ mod tests {
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -894,11 +839,11 @@ mod tests {
             },
             Instruction {
                 opcode: OpCode::CallNoArg,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Await,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -908,11 +853,11 @@ mod tests {
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // if ... { ... }
             Instruction {
@@ -923,20 +868,20 @@ mod tests {
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             // exit;
             Instruction {
                 opcode: OpCode::PushNull,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
             Instruction {
                 opcode: OpCode::Exit,
-                arg: InstructionArg::Empty,
+                arg: Empty,
             },
         ];
         assert_eq!(vm_state.instructions, expected_code);
