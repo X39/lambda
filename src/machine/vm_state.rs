@@ -1,13 +1,23 @@
-use crate::machine::{Instruction, InstructionArg, OpCode, VmPair, VmStack, VmValue, VmValueType};
+use std::borrow::{Borrow};
+use crate::machine::{Instruction, InstructionArg, OpCode, VmPair, VmStack, VmValue};
 use serde::{Serialize, Deserialize};
+use uuid::{Uuid};
+use crate::controllers::VmController;
 
 #[derive(Serialize, Deserialize)]
 pub struct VmState {
-    pub value_list: Vec<VmValue>,
-    pub function_list: Vec<String>,
-    pub instructions: Vec<Instruction>,
-    pub instruction_index: usize,
+    id: Uuid,
+    value_list: Vec<VmValue>,
+    function_list: Vec<String>,
+    instructions: Vec<Instruction>,
+    instruction_index: usize,
 }
+
+pub enum VmExecResult {
+    Empty,
+    Suspended,
+}
+
 impl std::fmt::Debug for VmState {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         writeln!(f, "Values: {}", self.value_list.len())?;
@@ -30,7 +40,45 @@ impl std::fmt::Debug for VmState {
     }
 }
 
-impl VmState {
+impl VmState
+{
+    pub fn new() -> VmState {
+        return VmState {
+            id: Uuid::new_v4(),
+            instructions: vec!(),
+            function_list: vec!(),
+            value_list: vec!(),
+            instruction_index: 0,
+        };
+    }
+
+    pub fn value_index(&mut self, value: VmValue) -> u16 {
+        let mut ret: Option<usize> = None;
+        for (index, val) in self.value_list.iter().enumerate() {
+            if !value.eq(val) {
+                continue;
+            }
+            ret = Some(index);
+            break;
+        }
+        if ret.is_none() {
+            ret = Some(self.value_list.len());
+            self.value_list.push(value);
+        }
+        ret.unwrap() as u16
+    }
+    pub fn push_instruction(&mut self, inst: Instruction) {
+        self.instructions.push(inst);
+    }
+    pub fn instructions(&self) -> &[Instruction] {
+        return self.instructions.borrow();
+    }
+    pub fn get_instruction(&mut self, index: usize) -> Option<&mut Instruction> {
+        match self.instructions.get_mut(index) {
+            None => None,
+            Some(v) => Some(v)
+        }
+    }
     pub fn is_done(&self) -> bool {
         self.instructions.len() <= self.instruction_index
     }
@@ -42,7 +90,12 @@ impl VmState {
         self.instruction_index += 1;
         return Ok(instruction);
     }
-    pub fn step<'a, 'b>(&'a mut self, stack: &'b mut VmStack) -> Result<(), &'static str> {
+    pub fn step<'a, 'b>(
+        &'a mut self,
+        stack: &'b mut VmStack,
+        controller: &dyn VmController)
+        -> Result<VmExecResult, Box<dyn std::error::Error>>
+    {
         let instruction = self.next_instruction()?;
         match instruction.opcode {
             OpCode::NoOp => { /* empty */ }
@@ -52,7 +105,7 @@ impl VmState {
             OpCode::PushValueU16 => {
                 match instruction.arg
                 {
-                    InstructionArg::Empty => { return Err("PushValueU16 argument is empty."); }
+                    InstructionArg::Empty => { return Err("PushValueU16 argument is empty.".into()); }
                     InstructionArg::Unsigned(index) => {
                         let data_opt = self.value_list.get(index as usize);
                         if let Some(data) = data_opt {
@@ -60,8 +113,8 @@ impl VmState {
                             stack.push_value(cloned);
                         }
                     }
-                    InstructionArg::Signed(_) => { return Err("PushValueU16 argument is signed."); }
-                    InstructionArg::Type(_) => { return Err("PushValueU16 argument is type."); }
+                    InstructionArg::Signed(_) => { return Err("PushValueU16 argument is signed.".into()); }
+                    InstructionArg::Type(_) => { return Err("PushValueU16 argument is type.".into()); }
                 }
             }
             OpCode::PushTrue => {
@@ -81,40 +134,23 @@ impl VmState {
             }
             OpCode::GetVariable => {
                 let key = stack.pop_string()?;
-                let mut found = false;
-                for vm_pair in stack.variables.iter() {
-                    if vm_pair.key == key {
-                        stack.push_value(vm_pair.value.clone());
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    return Err("GetVariable found no variable with the name provided");
-                }
+                let variable = match stack.get_variable(key) {
+                    Some(v) => v,
+                    None => return Err("GetVariable found no variable with the name provided.".into()),
+                };
+                stack.push_value(variable);
             }
             OpCode::GetVariableOfType => {
-                let key = stack.pop_string()?;
-                let mut found = false;
                 let expected_type = instruction.arg.get_vm_type()?;
-                for vm_pair in stack.variables.iter() {
-                    if vm_pair.key == key {
-                        if !match expected_type {
-                            VmValueType::Null => vm_pair.value.is_null(),
-                            VmValueType::Array => vm_pair.value.is_array(),
-                            VmValueType::ArrayOfJobs => vm_pair.value.is_array_of_jobs(),
-                            VmValueType::Job => vm_pair.value.is_job(),
-                        } {
-                            return Err("GetVariableOfType found variable but the type was not matching the expected");
-                        }
-                        stack.push_value(vm_pair.value.clone());
-                        found = true;
-                        break;
-                    }
+                let key = stack.pop_string()?;
+                let variable = match stack.get_variable(key) {
+                    Some(v) => v,
+                    None => return Err("GetVariableOfType found no variable with the name provided.".into()),
+                };
+                if !variable.is_type(expected_type) {
+                    return Err("GetVariableOfType found variable but the type was not matching the expected.".into());
                 }
-                if !found {
-                    return Err("GetVariableOfType found no variable with the name provided");
-                }
+                stack.push_value(variable);
             }
             OpCode::AppendArrayPush => {
                 let value = stack.pop_value()?;
@@ -135,16 +171,7 @@ impl VmState {
             OpCode::Assign => {
                 let key = stack.pop_string()?;
                 let value = stack.pop_value()?;
-                for mut vm_pair in stack.variables.iter_mut() {
-                    if vm_pair.key == key {
-                        vm_pair.value = value;
-                        return Ok(());
-                    }
-                }
-                stack.variables.push(VmPair {
-                    key,
-                    value,
-                });
+                stack.set_variable(key, value);
             }
             OpCode::Pop => { stack.pop_value()?; }
             OpCode::Jump => {
@@ -197,7 +224,7 @@ impl VmState {
                             }
                         }
                     }
-                    _ => return Err("JumpIterate failed to pop either array or object from stack"),
+                    _ => return Err("JumpIterate failed to pop either array or object from stack.".into()),
                 }
             }
             OpCode::Swap2 => {
@@ -211,15 +238,46 @@ impl VmState {
                 println!("{:?}", value);
             }
 
-            OpCode::Await => { return Err("Async opcodes are not implemented (yet)"); }
-            OpCode::Abort => { return Err("Async opcodes are not implemented (yet)"); }
-            OpCode::AbortAll => { return Err("Async opcodes are not implemented (yet)"); }
-            OpCode::AwaitAny => { return Err("Async opcodes are not implemented (yet)"); }
-            OpCode::AwaitAll => { return Err("Async opcodes are not implemented (yet)"); }
-            OpCode::Call => { return Err("Async opcodes are not implemented (yet)"); }
-            OpCode::CallNoArg => { return Err("Async opcodes are not implemented (yet)"); }
+            OpCode::Await => {
+                let job_uuid = stack.pop_job()?;
+
+                let optional_value = controller.get_and_remove_result_of(job_uuid)?;
+                if let Some(value) = optional_value {
+                    stack.push_value(value);
+                } else {
+                    controller.suspend_until_any(self, vec!(job_uuid))?;
+                    return Ok(VmExecResult::Suspended);
+                }
+            }
+            OpCode::Abort => {
+                let job_uuid = stack.pop_job()?;
+                controller.abort(vec!(job_uuid))?;
+            }
+            OpCode::AbortAll => {
+                let jobs = stack.pop_array_of_jobs()?;
+                controller.abort(jobs)?;
+            }
+            OpCode::AwaitAny => {
+                let jobs = stack.pop_array_of_jobs()?;
+                controller.suspend_until_any(self, jobs)?;
+            }
+            OpCode::AwaitAll => {
+                let jobs = stack.pop_array_of_jobs()?;
+                controller.suspend_until_all(self, jobs)?;
+            }
+            OpCode::Call => {
+                let function_name = stack.pop_string()?;
+                let value = stack.pop_value()?;
+                let job = controller.call(function_name, Some(value))?;
+                stack.push_value(VmValue::Job(job));
+            }
+            OpCode::CallNoArg => {
+                let function_name = stack.pop_string()?;
+                let job = controller.call(function_name, None)?;
+                stack.push_value(VmValue::Job(job));
+            }
         };
-        Ok(())
+        Ok(VmExecResult::Empty)
     }
 
     fn jump_instruction_index(&mut self, i: i16) -> Result<(), &'static str> {

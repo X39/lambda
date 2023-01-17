@@ -4,8 +4,11 @@ extern crate core;
 
 
 use crate::machine::*;
+use crate::controllers::*;
+
 mod machine;
 mod assembler;
+mod controllers;
 
 // use crate::assembler::Token;
 
@@ -20,14 +23,18 @@ fn create_vm_state(s: &str) -> Result<VmState, &str> {
     return Ok(vm_state);
 }
 
-fn vm_state_step<'a>(state: &'a mut VmState, stack: &'a mut VmStack) {
+fn vm_state_step<'a>(
+    state: &'a mut VmState,
+    stack: &'a mut VmStack,
+    controller: &'a mut dyn VmController
+) {
     while !state.is_done() {
-        match state.step(stack) {
+        match state.step(stack, controller) {
             Ok(_) => {}
             Err(s) => {
                 println!("{}", s);
                 return;
-            },
+            }
         }
     }
 }
@@ -38,9 +45,7 @@ fn main() {
     print a;\
     a += 3;\
     print a;").unwrap();
-    let mut vm_stack = VmStack {
-        variables: vec![],
-        data: vec![],
-    };
-    vm_state_step(&mut vm_state, &mut vm_stack);
+    let mut vm_stack = VmStack::new();
+    let mut controller = VmLocalController::new();
+    vm_state_step(&mut vm_state, &mut vm_stack, &mut controller);
 }

@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use crate::machine::{VmPair, VmValue};
 
 pub struct VmStack {
@@ -63,29 +64,56 @@ impl VmStack {
             _ => Err("Failed to pop BOOLEAN value from stack"),
         }
     }
-}
-impl std::ops::Index<String> for VmStack {
-    type Output = VmValue;
 
-    fn index(&self, index: String) -> &Self::Output {
-        todo!()
+    pub fn get_variable<S>(&self, name: S) -> Option<VmValue> where S: Into<String> {
+        let key = name.into();
+        for vm_pair in self.variables.iter() {
+            if vm_pair.key == key {
+                return Some(vm_pair.value.clone());
+            }
+        }
+        return None;
     }
-}
-impl std::ops::IndexMut<String> for VmStack {
-    fn index_mut(&mut self, index: String) -> &mut Self::Output {
-        todo!()
+    pub fn set_variable<S>(&mut self, name: S, value: VmValue) where S: Into<String> {
+        let key = name.into();
+        for mut vm_pair in self.variables.iter_mut() {
+            if vm_pair.key == key {
+                vm_pair.value = value;
+                return;
+            }
+        }
+        self.variables.push(VmPair {
+            key,
+            value,
+        });
     }
-}
-impl std::ops::Index<usize> for VmStack {
-    type Output = VmValue;
 
-    fn index(&self, index: usize) -> &Self::Output {
-        todo!()
+    pub fn pop_job(&mut self) -> Result<Uuid, &'static str> {
+        let candidate = self.pop_value()?;
+        match candidate {
+            VmValue::Job(uuid) => Ok(uuid),
+            _ => Err("Failed to pop JOB value from stack"),
+        }
     }
-}
-impl std::ops::IndexMut<usize> for VmStack {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        todo!()
+
+    pub fn pop_array_of_jobs(&mut self) -> Result<Vec<Uuid>, &'static str> {
+        let array_value = self.pop_value()?;
+        if !array_value.is_array_of_jobs() {
+            return Err("AbortAll expected array of jobs");
+        }
+        let mut jobs: Vec<Uuid> = vec!();
+        match array_value {
+            VmValue::Array(array) => {
+                for value in array {
+                    match value {
+                        VmValue::Job(uuid) => jobs.push(uuid),
+                        _ => return Err("Not all elements in array are of type job.")
+                    }
+                }
+            }
+            _ => return Err("Value is not of an array type.")
+        }
+        Ok(jobs)
     }
 }
 
@@ -93,6 +121,7 @@ impl std::ops::IndexMut<usize> for VmStack {
 #[cfg(test)]
 mod tests {
     use tracing_test::traced_test;
+    use uuid::Uuid;
     use crate::machine::*;
 
     #[test]
@@ -102,6 +131,17 @@ mod tests {
         match stack.data.len() == 0 && stack.variables.len() == 0 {
             false => Err("VmStack::new() creates non-empty stack".into()),
             true => Ok(()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn push_value_has_value() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.push_value(VmValue::Null);
+        match stack.data.len() {
+            1 => Ok(()),
+            _ => Err("push_value did not increase data size".into()),
         }
     }
 
@@ -123,17 +163,6 @@ mod tests {
         match stack.pop_value() {
             Ok(_) => Ok(()),
             Err(_) => Err("Non empty stack yields an error instead of a value".into()),
-        }
-    }
-
-    #[test]
-    #[traced_test]
-    fn push_value_has_value() -> Result<(), Box<dyn std::error::Error>> {
-        let mut stack = VmStack::new();
-        stack.push_value(VmValue::Null);
-        match stack.data.len() {
-            1 => Ok(()),
-            _ => Err("push_value did not increase data size".into()),
         }
     }
 
@@ -227,7 +256,7 @@ mod tests {
         let mut stack = VmStack::new();
         stack.push_value(VmValue::Null);
         match stack.pop_number() {
-            Ok(_) => Err("pop_number with VmValue::Null returned valid string".into()),
+            Ok(_) => Err("pop_number with VmValue::Null returned valid number".into()),
             Err(_) => Ok(()),
         }
     }
@@ -254,7 +283,7 @@ mod tests {
         let mut stack = VmStack::new();
         stack.push_value(VmValue::Null);
         match stack.pop_bool() {
-            Ok(_) => Err("pop_bool with VmValue::Null returned valid string".into()),
+            Ok(_) => Err("pop_bool with VmValue::Null returned valid bool".into()),
             Err(_) => Ok(()),
         }
     }
@@ -272,6 +301,175 @@ mod tests {
                 but the value does not hold the expected bool".into())
             },
             Err(_) => Err("pop_bool with VmValue::Boolean returned an error".into()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn pop_job_wrong_type_errors() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.push_value(VmValue::Null);
+        match stack.pop_job() {
+            Ok(_) => Err("pop_job with VmValue::Null returned valid job".into()),
+            Err(_) => Ok(()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn pop_job_correct_type_no_error() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        let uuid = Uuid::new_v4();
+        stack.push_value(VmValue::Job(uuid));
+        match stack.pop_job() {
+            Ok(v) => if v == uuid {
+                Ok(())
+            } else {
+                Err("pop_job with VmValue::job returned a value \
+                but the value does not hold the expected job".into())
+            },
+            Err(_) => Err("pop_job with VmValue::job returned an error".into()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn get_variable_empty_not_existing() -> Result<(), Box<dyn std::error::Error>> {
+        let stack = VmStack::new();
+        match stack.get_variable("foobar") {
+            Some(_) => Err("get_variable returned a value for foobar \
+            but no variable exists on the stack.".into()),
+            None => Ok(()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn get_variable_filled_not_existing() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.variables.push(VmPair {
+            key: "barfoo".into(),
+            value: VmValue::Null,
+        });
+        match stack.get_variable("foobar") {
+            Some(_) => Err("get_variable returned a value for foobar \
+            but no variable exists on the stack.".into()),
+            None => Ok(()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn get_variable_existing() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.variables.push(VmPair {
+            key: "foobar".into(),
+            value: VmValue::Boolean(true),
+        });
+        match stack.get_variable("foobar") {
+            Some(v) => match v {
+                VmValue::Boolean(flag) => if flag == true {
+                    Ok(())
+                } else {
+                    Err("get_variable returned a value for foobar \
+                but the value does not hold the expected true bool".into())
+                },
+                _ => Err("get_variable returned a value for foobar \
+                but the value does not hold the expected type".into())
+            },
+            None => Err("get_variable returned no value for foobar \
+            but should have as the variable exists.".into()),
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn get_variable_empty_not_creating_variable() -> Result<(), Box<dyn std::error::Error>> {
+        let stack = VmStack::new();
+        let len = stack.variables.len();
+        stack.get_variable("foobar");
+        if stack.variables.len() != len {
+            Err("get_variable created a variable when it should not have been able to.".into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn set_variable_empty_not_existing_creates_new_pair() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        let len = stack.variables.len();
+        stack.set_variable("foobar", VmValue::Null);
+        if stack.variables.len() != len + 1 {
+            Err("set_variable did not create a new VmPair in variables section of stack.".into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn set_variable_filled_not_existing_creates_new_pair() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.variables.push(VmPair {
+            key: "barfoo".into(),
+            value: VmValue::Boolean(true),
+        });
+        let len = stack.variables.len();
+        stack.set_variable("foobar", VmValue::Null);
+        if stack.variables.len() != len + 1 {
+            Err("set_variable did not create a new VmPair in variables section of stack.".into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn set_variable_existing_no_new_pair() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.variables.push(VmPair {
+            key: "foobar".into(),
+            value: VmValue::Boolean(true),
+        });
+        let len = stack.variables.len();
+        stack.set_variable("foobar", VmValue::Null);
+        if stack.variables.len() != len {
+            Err("set_variable created a new VmPair in variables section of stack even \
+            though a matching pair existed.".into())
+        } else {
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn set_variable_existing_value_matches_expected() -> Result<(), Box<dyn std::error::Error>> {
+        let mut stack = VmStack::new();
+        stack.variables.push(VmPair {
+            key: "foobar".into(),
+            value: VmValue::Boolean(true),
+        });
+        stack.set_variable("foobar", VmValue::Null);
+        match stack.get_variable("foobar") {
+            Some(v) => match v {
+                VmValue::Null => {}
+                _ => return Err("set_variable did not update the value to the expected value.".into()),
+            },
+            _ => return Err("set_variable erased variable instead of setting it.".into())
+        };
+        stack.set_variable("foobar", VmValue::Boolean(true));
+        match stack.get_variable("foobar") {
+            Some(v) => match v {
+                VmValue::Boolean(flag) => if flag == true {
+                    Ok(())
+                } else {
+                    Err("set_variable did update the value to the expected type but it does not contain the expected value.".into())
+                },
+                _ => Err("set_variable did not update the value to the expected value.".into()),
+            },
+            _ => Err("set_variable erased variable instead of setting it.".into())
         }
     }
 }

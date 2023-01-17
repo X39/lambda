@@ -3,16 +3,11 @@ pub mod compiler {
     use tracing::trace;
 
     use crate::assembler::parser::parser::{AssignmentStatement, AssignmentType, AssignStatementData, AwaitCallOrIdentProduction, AwaitStatement, Call, CallValue, ElseStatement, ForLoopInstruction, ForLoopStatement, IfElseStatement, IfStatementCondition, NumericRange, Property, Statement, Value, X39File};
-    use crate::machine::{Instruction, InstructionArg, OpCode, VmState, VmValue, VmValueType};
+    use crate::machine::{Instruction, InstructionArg, VmState, VmValue, VmValueType};
 
 
     pub fn compile(file: X39File) -> VmState {
-        let mut vm = VmState {
-            value_list: vec![],
-            function_list: vec![],
-            instructions: vec![],
-            instruction_index: 0,
-        };
+        let mut vm = VmState::new();
         compile_statements(file.statements.borrow(), vm.borrow_mut());
         vm
     }
@@ -27,10 +22,7 @@ pub mod compiler {
                 Statement::Comment => {}
                 Statement::Start(call) => {
                     compile_start(call, vm.borrow_mut());
-                    vm.instructions.push(Instruction {
-                        opcode: OpCode::Pop,
-                        arg: InstructionArg::Empty,
-                    });
+                    vm.push_instruction(Instruction::op_pop());
                 }
                 Statement::IfElse(if_else_statement) => compile_if_else(if_else_statement, vm.borrow_mut()),
                 Statement::ForLoop(for_loop_statement) => compile_for_loop(for_loop_statement, vm.borrow_mut()),
@@ -40,36 +32,20 @@ pub mod compiler {
         }
     }
 
-    fn util_get_value_index(value: VmValue, vm: &mut VmState) -> u16 {
-        let mut ret: Option<usize> = None;
-        for (index, val) in vm.value_list.iter().enumerate() {
-            if !value.eq(val) {
-                continue;
-            }
-            ret = Some(index);
-            break;
-        }
-        if ret.is_none() {
-            ret = Some(vm.value_list.len());
-            vm.value_list.push(value);
-        }
-        ret.unwrap() as u16
-    }
-
     fn compile_assignment(assignment_statement: &AssignmentStatement, vm: &mut VmState) {
-        trace!("Entering compile_assignment with {} instructions", vm.instructions.len());
+        trace!("Entering compile_assignment with {} instructions", vm.instructions().len());
         let key = assignment_statement.ident.to_string();
         match assignment_statement.value.borrow() {
             AssignmentType::Append(append) => compile_assignment_append(append, key, vm),
             AssignmentType::Assign(assign) => compile_assignment_assign(assign, key, vm),
         }
-        trace!("Exiting compile_assignment with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_assignment with {} instructions", vm.instructions().len());
     }
 
     fn compile_assignment_assign(assign: &AssignStatementData, ident: String, vm: &mut VmState) {
-        trace!("Entering compile_assignment_assign with {} instructions", vm.instructions.len());
+        trace!("Entering compile_assignment_assign with {} instructions", vm.instructions().len());
         // Reserve variable name index
-        let value_index = util_get_value_index(VmValue::String(ident), vm.borrow_mut());
+        let value_index = vm.value_index(VmValue::String(ident));
         // PUSH the value to append on the stack
         match assign {
             AssignStatementData::Value(value) => compile_value(value, vm),
@@ -77,28 +53,19 @@ pub mod compiler {
             AssignStatementData::Start(start) => compile_start(start, vm),
         }
         // PUSH variable name to stack for assignment in the end
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
         // Assign array to variable
-        vm.instructions.push(Instruction::new1(OpCode::Assign));
-        trace!("Exiting compile_assignment_assign with {} instructions", vm.instructions.len());
+        vm.push_instruction(Instruction::op_assign());
+        trace!("Exiting compile_assignment_assign with {} instructions", vm.instructions().len());
     }
 
     fn compile_assignment_append(append: &AssignStatementData, ident: String, vm: &mut VmState) {
-        trace!("Entering compile_assignment_append with {} instructions", vm.instructions.len());
+        trace!("Entering compile_assignment_append with {} instructions", vm.instructions().len());
         // Reserve variable name value index
-        let value_index = util_get_value_index(VmValue::String(ident), vm.borrow_mut());
+        let value_index = vm.value_index(VmValue::String(ident));
         // PUSH array in variable to stack
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariableOfType,
-            arg: InstructionArg::Type(VmValueType::Array),
-        });
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable_of_type(VmValueType::Array));
         // PUSH the value to append on the stack
         match append {
             AssignStatementData::Value(value) => compile_value(value, vm),
@@ -106,19 +73,16 @@ pub mod compiler {
             AssignStatementData::Start(start) => compile_start(start, vm),
         }
         // Append the value to the array
-        vm.instructions.push(Instruction::new1(OpCode::AppendArrayPush));
+        vm.push_instruction(Instruction::op_append_array_push());
         // PUSH variable name to stack for assignment in the end
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
         // Assign array to variable
-        vm.instructions.push(Instruction::new1(OpCode::Assign));
-        trace!("Exiting compile_assignment_append with {} instructions", vm.instructions.len());
+        vm.push_instruction(Instruction::op_assign());
+        trace!("Exiting compile_assignment_append with {} instructions", vm.instructions().len());
     }
 
     fn compile_for_loop(for_loop_statement: &ForLoopStatement, vm: &mut VmState) {
-        trace!("Entering compile_for_loop with {} instructions", vm.instructions.len());
+        trace!("Entering compile_for_loop with {} instructions", vm.instructions().len());
         // PUSH value to iterate over
         match for_loop_statement.over.borrow() {
             ForLoopInstruction::Ident(ident) => compile_ident(ident, vm),
@@ -126,189 +90,147 @@ pub mod compiler {
             ForLoopInstruction::Value(value) => compile_value(value, vm),
         }
         // PUSH index
-        let value_index = util_get_value_index(VmValue::Number(0.0), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
+        let value_index = vm.value_index(VmValue::Number(0.0));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
         // Prepare jump instruction
-        let jump_offset = vm.instructions.len();
-        vm.instructions.push(Instruction {
-            opcode: OpCode::JumpIterate,
-            arg: InstructionArg::Signed(0),
-        });
+        let jump_offset = vm.instructions().len();
+        vm.push_instruction(Instruction::op_jump_iterate(0));
         // PUSH variable name to stack for assignment in the end
         let ident = for_loop_statement.ident.to_string();
-        let value_index = util_get_value_index(VmValue::String(ident), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
+        let value_index = vm.value_index(VmValue::String(ident));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
         // Assign iterated element to variable
-        vm.instructions.push(Instruction::new1(OpCode::Assign));
+        vm.push_instruction(Instruction::op_assign());
         // Emit code
         compile_statements(for_loop_statement.code.borrow(), vm);
         // Emit jump back to loop
-        let break_jump_offset = vm.instructions.len();
-        vm.instructions.push(Instruction {
-            opcode: OpCode::Jump,
-            arg: InstructionArg::Signed(-((break_jump_offset - jump_offset) as i16)),
-        });
+        let break_jump_offset = vm.instructions().len();
+        vm.push_instruction(Instruction::op_jump(-((break_jump_offset - jump_offset) as i16)));
         // Update skip
-        let next_offset = vm.instructions.len();
-        vm.instructions[jump_offset].arg = InstructionArg::Signed((next_offset - jump_offset) as i16);
-        trace!("Exiting compile_for_loop with {} instructions", vm.instructions.len());
+        let next_offset = vm.instructions().len();
+        vm.get_instruction(jump_offset).unwrap().arg = InstructionArg::Signed((next_offset - jump_offset) as i16);
+        trace!("Exiting compile_for_loop with {} instructions", vm.instructions().len());
     }
 
     fn compile_if_else(if_else_statement: &IfElseStatement, vm: &mut VmState) {
-        trace!("Entering compile_if_else with {} instructions", vm.instructions.len());
+        trace!("Entering compile_if_else with {} instructions", vm.instructions().len());
         // PUSH condition
         compile_if_statement_condition(if_else_statement.if_statement.condition.borrow(), vm);
         // Prepare jump instruction
-        let true_offset = vm.instructions.len();
-        vm.instructions.push(Instruction {
-            opcode: OpCode::JumpIfFalse,
-            arg: InstructionArg::Signed(0),
-        });
+        let true_offset = vm.instructions().len();
+        vm.push_instruction(Instruction::op_jump_if_false(0));
         // Write out if code
         compile_statements(if_else_statement.if_statement.code.borrow(), vm);
 
         if let Some(else_statement) = if_else_statement.else_statement.borrow() {
             // Prepare else skip-jump
-            let skip_offset = vm.instructions.len();
-            vm.instructions.push(Instruction {
-                opcode: OpCode::Jump,
-                arg: InstructionArg::Signed(0),
-            });
+            let skip_offset = vm.instructions().len();
+            vm.push_instruction(Instruction::op_jump(0));
             // Modify prepared jump instruction to correct offset
-            let after_true_code_offset = vm.instructions.len();
-            vm.instructions[true_offset].arg = InstructionArg::Signed((after_true_code_offset - true_offset - 1) as i16);
+            let after_true_code_offset = vm.instructions().len();
+            vm.get_instruction(true_offset).unwrap().arg = InstructionArg::Signed((after_true_code_offset - true_offset - 1) as i16);
             // Write out else code
             match else_statement {
                 ElseStatement::Code(else_code) => compile_statements(else_code, vm),
                 ElseStatement::IfElse(if_else) => compile_if_else(if_else, vm),
             }
             // Modify prepared jump instruction to correct offset
-            let after_else_code_offset = vm.instructions.len();
-            vm.instructions[skip_offset].arg = InstructionArg::Signed((after_else_code_offset - skip_offset - 1) as i16);
+            let after_else_code_offset = vm.instructions().len();
+            vm.get_instruction(skip_offset).unwrap().arg = InstructionArg::Signed((after_else_code_offset - skip_offset - 1) as i16);
         } else {
             // Modify prepared jump instruction to correct offset
-            let after_true_code_offset = vm.instructions.len();
-            vm.instructions[true_offset].arg = InstructionArg::Signed((after_true_code_offset - true_offset - 1) as i16);
+            let after_true_code_offset = vm.instructions().len();
+            vm.get_instruction(true_offset).unwrap().arg = InstructionArg::Signed((after_true_code_offset - true_offset - 1) as i16);
         }
-        trace!("Exiting compile_if_else with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_if_else with {} instructions", vm.instructions().len());
     }
 
     fn compile_if_statement_condition(condition: &IfStatementCondition, vm: &mut VmState) {
-        trace!("Entering compile_if_statement_condition with {} instructions", vm.instructions.len());
+        trace!("Entering compile_if_statement_condition with {} instructions", vm.instructions().len());
         match condition {
             IfStatementCondition::Await(await_call_or_ident) => compile_await_call_or_ident(await_call_or_ident, vm),
             IfStatementCondition::Ident(ident) => compile_ident(*ident, vm),
         }
-        trace!("Exiting compile_if_statement_condition with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_if_statement_condition with {} instructions", vm.instructions().len());
     }
 
     fn compile_start(call: &Call, vm: &mut VmState) {
-        trace!("Entering compile_start with {} instructions", vm.instructions.len());
+        trace!("Entering compile_start with {} instructions", vm.instructions().len());
         compile_call(call, vm);
-        trace!("Exiting compile_start with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_start with {} instructions", vm.instructions().len());
     }
 
     fn compile_abort(abort_ident: &&str, vm: &mut VmState) {
-        trace!("Entering compile_abort with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(abort_ident.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariableOfType,
-            arg: InstructionArg::Type(VmValueType::Job),
-        });
-        vm.instructions.push(Instruction::new1(OpCode::Abort));
-        trace!("Exiting compile_abort with {} instructions", vm.instructions.len());
+        trace!("Entering compile_abort with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(abort_ident.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable_of_type(VmValueType::Job));
+        vm.push_instruction(Instruction::op_abort());
+        trace!("Exiting compile_abort with {} instructions", vm.instructions().len());
     }
 
     fn compile_print(ident: &&str, vm: &mut VmState) {
-        trace!("Entering compile_print with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(ident.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction::new1(OpCode::GetVariable));
-        vm.instructions.push(Instruction::new1(OpCode::PrintToConsole));
-        trace!("Exiting compile_print with {} instructions", vm.instructions.len());
+        trace!("Entering compile_print with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(ident.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable());
+        vm.push_instruction(Instruction::op_print_to_console());
+        trace!("Exiting compile_print with {} instructions", vm.instructions().len());
     }
 
     fn compile_abort_all(abort_ident: &&str, vm: &mut VmState) {
-        trace!("Entering compile_abort with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(abort_ident.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariableOfType,
-            arg: InstructionArg::Type(VmValueType::Job),
-        });
-        vm.instructions.push(Instruction::new1(OpCode::AbortAll));
-        trace!("Exiting compile_abort with {} instructions", vm.instructions.len());
+        trace!("Entering compile_abort with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(abort_ident.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable_of_type(VmValueType::Job));
+        vm.push_instruction(Instruction::op_abort_all());
+        trace!("Exiting compile_abort with {} instructions", vm.instructions().len());
     }
 
     fn compile_await(await_statement: &AwaitStatement, vm: &mut VmState) {
-        trace!("Entering compile_await with {} instructions", vm.instructions.len());
+        trace!("Entering compile_await with {} instructions", vm.instructions().len());
         match await_statement {
             AwaitStatement::AwaitAny(await_any) => compile_await_any(await_any, vm),
             AwaitStatement::AwaitAll(await_all) => compile_await_all(await_all, vm),
             AwaitStatement::AwaitCallOrIdent(await_call_or_ident) => compile_await_call_or_ident(await_call_or_ident, vm),
         }
-        trace!("Exiting compile_await with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_await with {} instructions", vm.instructions().len());
     }
 
     fn compile_await_call_or_ident(await_call_or_ident: &AwaitCallOrIdentProduction, vm: &mut VmState) {
-        trace!("Entering compile_await_call_or_ident with {} instructions", vm.instructions.len());
+        trace!("Entering compile_await_call_or_ident with {} instructions", vm.instructions().len());
         match await_call_or_ident {
             AwaitCallOrIdentProduction::Call(call) => compile_call(call, vm),
             AwaitCallOrIdentProduction::Ident(ident) => compile_ident_job(ident, vm),
         }
-        vm.instructions.push(Instruction::new1(OpCode::Await));
-        trace!("Exiting compile_await_call_or_ident with {} instructions", vm.instructions.len());
+        vm.push_instruction(Instruction::op_await());
+        trace!("Exiting compile_await_call_or_ident with {} instructions", vm.instructions().len());
     }
 
     fn compile_call(call: &Call, vm: &mut VmState) {
-        trace!("Entering compile_call with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(call.ident.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
+        trace!("Entering compile_call with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(call.ident.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
         if let Some(value) = call.value.borrow() {
             compile_call_value(value, vm);
-            vm.instructions.push(Instruction {
-                opcode: OpCode::Call,
-                arg: InstructionArg::Empty,
-            })
+            vm.push_instruction(Instruction::op_call())
         } else {
-            vm.instructions.push(Instruction {
-                opcode: OpCode::CallNoArg,
-                arg: InstructionArg::Empty,
-            })
+            vm.push_instruction(Instruction::op_call_no_arg())
         }
-        trace!("Exiting compile_call with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_call with {} instructions", vm.instructions().len());
     }
 
     fn compile_call_value(call_value: &CallValue, vm: &mut VmState) {
-        trace!("Entering compile_call_value with {} instructions", vm.instructions.len());
+        trace!("Entering compile_call_value with {} instructions", vm.instructions().len());
         match call_value {
             CallValue::Ident(ident) => compile_ident(ident, vm),
             CallValue::Value(value) => compile_value(value, vm),
         }
-        trace!("Exiting compile_call_value with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_call_value with {} instructions", vm.instructions().len());
     }
 
     fn compile_value(value: &Value, vm: &mut VmState) {
-        trace!("Entering compile_value with {} instructions", vm.instructions.len());
+        trace!("Entering compile_value with {} instructions", vm.instructions().len());
         match value {
             Value::NumericRange(numeric_range) => compile_numeric_range(numeric_range, vm),
             Value::Number(number) => compile_number(*number, vm),
@@ -318,160 +240,115 @@ pub mod compiler {
             Value::Object(object) => compile_object(object, vm),
             Value::Array(array) => compile_array(array, vm),
         }
-        trace!("Exiting compile_value with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_value with {} instructions", vm.instructions().len());
     }
 
     fn compile_array(array: &Vec<Value>, vm: &mut VmState) {
-        trace!("Entering compile_array with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction::new1(OpCode::PushEmptyArray));
+        trace!("Entering compile_array with {} instructions", vm.instructions().len());
+        vm.push_instruction(Instruction::op_push_empty_array());
 
         for it in array.iter() {
             compile_value(it, vm);
-            vm.instructions.push(Instruction {
-                opcode: OpCode::AppendArrayPush,
-                arg: InstructionArg::Empty,
-            });
+            vm.push_instruction(Instruction::op_append_array_push());
         }
-        trace!("Exiting compile_array with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_array with {} instructions", vm.instructions().len());
     }
 
     fn compile_object(object: &Vec<Property>, vm: &mut VmState) {
-        trace!("Entering compile_object with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction::new1(OpCode::PushEmptyObject));
+        trace!("Entering compile_object with {} instructions", vm.instructions().len());
+        vm.push_instruction(Instruction::op_push_empty_object());
 
         for it in object.iter() {
             // Push Key
             let key = it.key.to_string();
-            let value_index = util_get_value_index(VmValue::String(key), vm.borrow_mut());
-            vm.instructions.push(Instruction {
-                opcode: OpCode::PushValueU16,
-                arg: InstructionArg::Unsigned(value_index),
-            });
+            let value_index = vm.value_index(VmValue::String(key));
+            vm.push_instruction(Instruction::op_push_value_u16(value_index));
 
             // Push Value
             let value = it.value.borrow();
             compile_value(value, vm);
-            vm.instructions.push(Instruction {
-                opcode: OpCode::AppendPropertyPush,
-                arg: InstructionArg::Empty,
-            });
+            vm.push_instruction(Instruction::op_append_array_push());
         }
-        trace!("Exiting compile_object with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_object with {} instructions", vm.instructions().len());
     }
 
     fn compile_numeric_range(numeric_range: &NumericRange, vm: &mut VmState) {
-        trace!("Entering compile_numeric_range with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction::new1(OpCode::PushEmptyArray));
+        trace!("Entering compile_numeric_range with {} instructions", vm.instructions().len());
+        vm.push_instruction(Instruction::op_push_empty_array());
 
         for i in numeric_range.from as i64..numeric_range.to as i64 {
-            let value_index = util_get_value_index(VmValue::Number(i as f64), vm.borrow_mut());
-            vm.instructions.push(Instruction {
-                opcode: OpCode::PushValueU16,
-                arg: InstructionArg::Unsigned(value_index),
-            });
-            vm.instructions.push(Instruction {
-                opcode: OpCode::AppendArrayPush,
-                arg: InstructionArg::Empty,
-            });
+            let value_index = vm.value_index(VmValue::Number(i as f64));
+            vm.push_instruction(Instruction::op_push_value_u16(value_index));
+            vm.push_instruction(Instruction::op_append_array_push());
         }
-        trace!("Exiting compile_numeric_range with {} instructions", vm.instructions.len());
+        trace!("Exiting compile_numeric_range with {} instructions", vm.instructions().len());
     }
 
     fn compile_number(number: f64, vm: &mut VmState) {
-        trace!("Entering compile_number with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::Number(number), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        trace!("Exiting compile_number with {} instructions", vm.instructions.len());
+        trace!("Entering compile_number with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::Number(number));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        trace!("Exiting compile_number with {} instructions", vm.instructions().len());
     }
 
     fn compile_string(string: String, vm: &mut VmState) {
-        trace!("Entering compile_string with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(string), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        trace!("Exiting compile_string with {} instructions", vm.instructions.len());
+        trace!("Entering compile_string with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(string));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        trace!("Exiting compile_string with {} instructions", vm.instructions().len());
     }
 
     fn compile_null(vm: &mut VmState) {
-        trace!("Entering compile_null with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction::new1(OpCode::PushNull));
-        trace!("Exiting compile_null with {} instructions", vm.instructions.len());
+        trace!("Entering compile_null with {} instructions", vm.instructions().len());
+        vm.push_instruction(Instruction::op_push_null());
+        trace!("Exiting compile_null with {} instructions", vm.instructions().len());
     }
 
     fn compile_boolean(boolean: bool, vm: &mut VmState) {
-        trace!("Entering compile_boolean with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction {
-            opcode: if boolean { OpCode::PushTrue } else { OpCode::PushFalse },
-            arg: InstructionArg::Empty,
-        });
-        trace!("Exiting compile_boolean with {} instructions", vm.instructions.len());
+        trace!("Entering compile_boolean with {} instructions", vm.instructions().len());
+        vm.push_instruction(Instruction::op_push_boolean(boolean));
+        trace!("Exiting compile_boolean with {} instructions", vm.instructions().len());
     }
 
     fn compile_ident(ident: &str, vm: &mut VmState) {
-        trace!("Entering compile_ident with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(ident.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction::new1(OpCode::GetVariable));
-        trace!("Exiting compile_ident with {} instructions", vm.instructions.len());
+        trace!("Entering compile_ident with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(ident.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable());
+        trace!("Exiting compile_ident with {} instructions", vm.instructions().len());
     }
 
     fn compile_ident_job(ident: &str, vm: &mut VmState) {
-        trace!("Entering compile_ident_job with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(ident.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariableOfType,
-            arg: InstructionArg::Type(VmValueType::Job),
-        });
-        trace!("Exiting compile_ident_job with {} instructions", vm.instructions.len());
+        trace!("Entering compile_ident_job with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(ident.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable_of_type(VmValueType::Job));
+        trace!("Exiting compile_ident_job with {} instructions", vm.instructions().len());
     }
 
     fn compile_await_all(await_all: &str, vm: &mut VmState) {
-        trace!("Entering compile_await_all with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(await_all.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariableOfType,
-            arg: InstructionArg::Type(VmValueType::ArrayOfJobs),
-        });
-        vm.instructions.push(Instruction::new1(OpCode::AwaitAll));
-        trace!("Exiting compile_await_all with {} instructions", vm.instructions.len());
+        trace!("Entering compile_await_all with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(await_all.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable_of_type(VmValueType::ArrayOfJobs));
+        vm.push_instruction(Instruction::op_await_all());
+        trace!("Exiting compile_await_all with {} instructions", vm.instructions().len());
     }
 
     fn compile_await_any(await_any: &str, vm: &mut VmState) {
-        trace!("Entering compile_await_any with {} instructions", vm.instructions.len());
-        let value_index = util_get_value_index(VmValue::String(await_any.to_string()), vm.borrow_mut());
-        vm.instructions.push(Instruction {
-            opcode: OpCode::PushValueU16,
-            arg: InstructionArg::Unsigned(value_index),
-        });
-        vm.instructions.push(Instruction {
-            opcode: OpCode::GetVariableOfType,
-            arg: InstructionArg::Type(VmValueType::ArrayOfJobs),
-        });
-        vm.instructions.push(Instruction::new1(OpCode::AwaitAny));
-        trace!("Exiting compile_await_any with {} instructions", vm.instructions.len());
+        trace!("Entering compile_await_any with {} instructions", vm.instructions().len());
+        let value_index = vm.value_index(VmValue::String(await_any.to_string()));
+        vm.push_instruction(Instruction::op_push_value_u16(value_index));
+        vm.push_instruction(Instruction::op_get_variable_of_type(VmValueType::ArrayOfJobs));
+        vm.push_instruction(Instruction::op_await_any());
+        trace!("Exiting compile_await_any with {} instructions", vm.instructions().len());
     }
 
     fn compile_exit(vm: &mut VmState) {
-        trace!("Entering compile_exit with {} instructions", vm.instructions.len());
-        vm.instructions.push(Instruction::new1(OpCode::PushNull));
-        vm.instructions.push(Instruction::new1(OpCode::Exit));
-        trace!("Exiting compile_exit with {} instructions", vm.instructions.len());
+        trace!("Entering compile_exit with {} instructions", vm.instructions().len());
+        vm.push_instruction(Instruction::op_push_null());
+        vm.push_instruction(Instruction::op_exit());
+        trace!("Exiting compile_exit with {} instructions", vm.instructions().len());
     }
 }
 
@@ -479,8 +356,7 @@ pub mod compiler {
 mod tests {
     use tracing::trace;
     use tracing_test::traced_test;
-    use crate::machine::{Instruction, InstructionArg, OpCode};
-    use crate::machine::InstructionArg::Empty;
+    use crate::machine::{Instruction};
 
     const TEST_FILE1: &str = r#"
     # comment
@@ -614,94 +490,37 @@ mod tests {
         let vm_state = super::compiler::compile(file);
         let expected_code = vec![
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // await fancy1()
-            Instruction {
-                opcode: OpCode::PushValueU16,
-                arg: InstructionArg::Unsigned(0),
-            },
-            Instruction {
-                opcode: OpCode::CallNoArg,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Await,
-                arg: Empty,
-            },
+            Instruction::op_push_value_u16(0),
+            Instruction::op_call_no_arg(),
+            Instruction::op_await(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::JumpIfFalse,
-                arg: InstructionArg::Signed(3),
-            },
+            Instruction::op_jump_if_false(3),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::Jump,
-                arg: InstructionArg::Signed(2),
-            },
+            Instruction::op_jump(2),
             // else { ... }
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
         ];
-        assert_eq!(vm_state.instructions, expected_code);
+        assert_eq!(vm_state.instructions(), expected_code);
         trace!("{:?}", vm_state);
         Ok(())
     }
@@ -733,158 +552,59 @@ mod tests {
         let vm_state = super::compiler::compile(file);
         let expected_code = vec![
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // await fancy1()
-            Instruction {
-                opcode: OpCode::PushValueU16,
-                arg: InstructionArg::Unsigned(0),
-            },
-            Instruction {
-                opcode: OpCode::CallNoArg,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Await,
-                arg: Empty,
-            },
+            Instruction::op_push_value_u16(0),
+            Instruction::op_call_no_arg(),
+            Instruction::op_await(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::JumpIfFalse,
-                arg: InstructionArg::Signed(3),
-            },
+            Instruction::op_jump_if_false(3),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::Jump,
-                arg: InstructionArg::Signed(16),
-            },
+            Instruction::op_jump(16),
             // await fancy1()
-            Instruction {
-                opcode: OpCode::PushValueU16,
-                arg: InstructionArg::Unsigned(0),
-            },
-            Instruction {
-                opcode: OpCode::CallNoArg,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Await,
-                arg: Empty,
-            },
+            Instruction::op_push_value_u16(0),
+            Instruction::op_call_no_arg(),
+            Instruction::op_await(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::JumpIfFalse,
-                arg: InstructionArg::Signed(3),
-            },
+            Instruction::op_jump_if_false(3),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::Jump,
-                arg: InstructionArg::Signed(9),
-            },
+            Instruction::op_jump(9),
             // await fancy1()
-            Instruction {
-                opcode: OpCode::PushValueU16,
-                arg: InstructionArg::Unsigned(0),
-            },
-            Instruction {
-                opcode: OpCode::CallNoArg,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Await,
-                arg: Empty,
-            },
+            Instruction::op_push_value_u16(0),
+            Instruction::op_call_no_arg(),
+            Instruction::op_await(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::JumpIfFalse,
-                arg: InstructionArg::Signed(3),
-            },
+            Instruction::op_jump_if_false(3),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // if ... { ... }
-            Instruction {
-                opcode: OpCode::Jump,
-                arg: InstructionArg::Signed(2),
-            },
+            Instruction::op_jump(2),
             // else { ... }
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
             // exit;
-            Instruction {
-                opcode: OpCode::PushNull,
-                arg: Empty,
-            },
-            Instruction {
-                opcode: OpCode::Exit,
-                arg: Empty,
-            },
+            Instruction::op_push_null(),
+            Instruction::op_exit(),
         ];
-        assert_eq!(vm_state.instructions, expected_code);
+        assert_eq!(vm_state.instructions(), expected_code);
         trace!("{:?}", vm_state);
         Ok(())
     }

@@ -77,6 +77,25 @@ impl VmValue {
             VmValue::Job(_) => false,
         }
     }
+    pub fn is_boolean(&self) -> bool {
+        match self {
+            VmValue::Null => false,
+            VmValue::String(_) => false,
+            VmValue::Number(_) => false,
+            VmValue::Array(_) => false,
+            VmValue::Boolean(_) => true,
+            VmValue::Object(_) => false,
+            VmValue::Job(_) => false,
+        }
+    }
+    pub fn is_type(&self, value_type: VmValueType) -> bool {
+        match value_type {
+            VmValueType::Null => self.is_null(),
+            VmValueType::Array => self.is_array(),
+            VmValueType::ArrayOfJobs => self.is_array_of_jobs(),
+            VmValueType::Job => self.is_job(),
+        }
+    }
 }
 
 impl InstructionArg {
