@@ -9,6 +9,7 @@ use crate::controllers::*;
 mod machine;
 mod assembler;
 mod controllers;
+mod io;
 
 // use crate::assembler::Token;
 
