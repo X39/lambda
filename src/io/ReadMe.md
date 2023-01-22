@@ -61,14 +61,15 @@ asked to quit via the [quit package](#1--quit-package).
 
 #### 1: Quit Package
 
-The protocol confirmation is sent after the [version package](#0--version-package)
-was processed by the server and consists of 1 byte.
+The quit message is either sent when lambda decides to kill a process due to lack of
+usage or after the [version package](#0--version-package) was read and the server is
+not supporting the protocol version desired by the client.
 
 The byte can be one of the following values:
 
 | sender | value | purpose           | description                                                                                           |
 |--------|-------|-------------------|-------------------------------------------------------------------------------------------------------|
-| server | 0x00  | terminate request | The server requested that the client closes. The client is given 1s to quit unless more is requested. |
+| server | 0x00  | terminate-request | The server requested that the client closes. The client is given 1s to quit unless more is requested. |
 | client | 0x01  | additional-1s     | Request one additional second of time for exiting the process. Works up to 60s.                       |
 | client | 0x02  | additional-2s     | Request two additional seconds of time for exiting the process. Works up to 60s.                      |
 | client | 0x03  | additional-3s     | Request three additional seconds of time for exiting the process. Works up to 60s.                    |
@@ -77,20 +78,139 @@ The byte can be one of the following values:
 | client | 0x3A  | additional-58s    | Request 58 additional seconds of time for exiting the process. Works up to 60s.                       |
 | client | 0x3B  | additional-59s    | Request 59 additional seconds of time for exiting the process. Works up to 60s.                       |
 
-#### Client Receives
+##### Client Receives
+
 The client must immediately start shutdown procedure.
 If it has not quit in a finite amount of time, the server will force-kill the process.
 
-#### Server Receives
+##### Server Receives
+
 The client is given additional seconds up to 60.
 
-#### 2: CallRequest
-Function call is requested.
-#### 3: CallResponse
-Function call has completed.
-#### 4: CallClosed
-Closes a function call, allowing to release the resources
-#### 5: GetValueRequest
+-----
+
+#### 2: Capabilities Package
+
+Send by lambda to receive the capabilities of a client.
+
+The package has no payload.
+
+##### Client Receives
+
+The client must respond with a [capabilities-response package](#3--capabilities-response-package).
+
+##### Server Receives
+
+Not Applicable
+
+-----
+
+#### 3: Capabilities-Response Package
+
+Send by the client if a [capabilities package](#2--capabilities-package) is received.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose         | description                                     |
+|-----:|----:|-----------------|-------------------------------------------------|
+|    1 |   4 | functions-count | The number of functions provided by the client. |
+
+##### Client Receives
+
+Not Applicable
+
+##### Server Receives
+
+The server will ask for every individual function sending a
+[function-capabilities package](#4--function-capabilities-package) for every
+function reported.
+
+-----
+
+#### 4: Function-Capabilities Package
+
+Send by the server to receive individual function information of the client.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose            | description                                          |
+|-----:|----:|--------------------|------------------------------------------------------|
+|    1 |   4 | function-requested | The function that should be send back to the server. |
+
+##### Client Receives
+
+The client must respond with a
+[function-capabilities-response package](#5--function-capabilities-response-package).
+
+##### Server Receives
+
+Not Applicable
+
+-----
+
+#### 5: Function-Capabilities-Response Package
+
+Send by the client once a
+[function-capabilities package](#4--function-capabilities-package) is received.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose            | description                                                                                                                         |
+|-----:|----:|--------------------|-------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | function-index     | The function index.                                                                                                                 |
+|    5 |   6 | name-length        | The length of the function name. Even tho this allows 2^16 characters, the maximum length is capped to 10000.                       |
+|    7 |   7 | arguments-required | The number of arguments expected for this function.                                                                                 |
+|    8 |   8 | arguments-count    | The number of arguments expected plus optional for this function. Optional arguments must occur in the end and are not transmitted. |
+|    9 |   9 | results-count      | The number of results produced by this function.                                                                                    |
+|   10 |   * | function-name      | The function name. The "to" field is as long as "name-length" was provided.                                                         |
+
+##### Client Receives
+Not Applicable
+
+##### Server Receives
+No response is returned. Server is supposed to store the information and only
+send valid requests to the client. The client may expect that the server
+is always sending valid requests for the [call package](#6--call-package)
+
+-----
+
+#### 6: Call Package
+
+Send by lambda to start a function. The package contains information about the function
+to be called and the expected number of values.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose         | description                        |
+|-----:|----:|-----------------|------------------------------------|
+|    1 |   4 | function-index  | The function to be called.         |
+|    5 |   5 | arguments-count | The number of arguments available. |
+|    6 |   9 | request-id      | The id for the call request.       |
+
+##### Client Receives
+The client should start working on the function immediately and may receive the
+arguments using the [value-request package](#7--value-request-package). Once the
+functions results are available, a [call-response package](#9--call-response-package)
+has to be sent. The resources of the result must be held until the server sends a
+[close-call package](#10--close-call-package).
+
+##### Server Receives
+Not Applicable
+
+-----
+
+#### 7: Value-Request Package
+
 Requests a value from the given slot.
-#### 6: GetValueResponse
+
+#### 8: GetValueResponse
+
 Sends the value of a given slot.
+
+#### 9: Call-Response Package
+
+Function call has completed.
+
+#### 10: Close-Call Package
+
+Closes a function call, allowing to release the resources
