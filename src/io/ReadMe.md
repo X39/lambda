@@ -1,3 +1,26 @@
+<!-- TOC -->
+* [Protocol v0.1.0 Documentation](#protocol-v010-documentation)
+    * [Transfer Medium](#transfer-medium)
+    * [Protocol error handling](#protocol-error-handling)
+    * [Frame-Format](#frame-format)
+      * [Header](#header)
+      * [Body](#body)
+    * [Messages](#messages)
+      * [0: Version Message](#0--version-message)
+      * [1: Quit Message](#1--quit-message)
+      * [2: Capabilities-Request Message](#2--capabilities-request-message)
+      * [3: Capabilities-Response Message](#3--capabilities-response-message)
+      * [4: Function-Capabilities Message](#4--function-capabilities-message)
+      * [5: Function-Capabilities-Response Message](#5--function-capabilities-response-message)
+      * [6: Call Message](#6--call-message)
+      * [7: Argument-Request Message](#7--argument-request-message)
+      * [8: Argument-Response Message](#8--argument-response-message)
+      * [9: Call-Completed Message](#9--call-completed-message)
+      * [10: Result-Request Message](#10--result-request-message)
+      * [11: Result-Response Message](#11--result-response-message)
+      * [12: Close-Call Message](#12--close-call-message)
+<!-- TOC -->
+
 # Protocol v0.1.0 Documentation
 
 This protocol defines a message-based system where every message is packed inside
@@ -54,16 +77,16 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |   13 |  16 | revision | The revision version of the server/client            |
 |   17 |  20 | protocol | The preferred protocol version for the server/client |
 
-##### Client Receives
+**Client Receives**
 
-The client must immediately respond to this message with its own version information.
-The proceeding protocol version is the one the client provided.
+> The client must immediately respond to this message with its own version information.
+> The proceeding protocol version is the one the client provided.
 
-##### Server Receives
+**Server Receives**
 
-Once the server received the client message, the server will attempt to find a
-matching protocol. If no matching protocol can be located, the client process will be
-asked to quit via the [quit message](#1--quit-message).
+> Once the server received the client message, the server will attempt to find a
+> matching protocol. If no matching protocol can be located, the client process will be
+> asked to quit via the [quit message](#1--quit-message).
 
 #### 1: Quit Message
 
@@ -84,15 +107,15 @@ The byte can be one of the following values:
 | client | 0x3A  | additional-58s    | Request 58 additional seconds of time for exiting the process. Works up to 60s.                       |
 | client | 0x3B  | additional-59s    | Request 59 additional seconds of time for exiting the process. Works up to 60s.                       |
 
-##### Client Receives
+**Client Receives**
 
-The client must immediately start shutdown procedure or ask for additional time by sending
-this [quit message](#1--quit-message) to the server with the corresponding time.
-If it has not quit in a finite amount of time, the server will force-kill the process.
+> The client must immediately start shutdown procedure or ask for additional time by sending
+> this [quit message](#1--quit-message) to the server with the corresponding time.
+> If it has not quit in a finite amount of time, the server will force-kill the process.
 
-##### Server Receives
+**Server Receives**
 
-The client is given additional seconds up to 60.
+> The client is given additional seconds up to 60.
 
 -----
 
@@ -102,13 +125,13 @@ Send by lambda to receive the capabilities of a client.
 
 The message has no payload.
 
-##### Client Receives
+**Client Receives**
 
-The client must respond with a [capabilities-response message](#3--capabilities-response-message).
+> The client must respond with a [capabilities-response message](#3--capabilities-response-message).
 
-##### Server Receives
+**Server Receives**
 
-Not Applicable
+> Not Applicable
 
 -----
 
@@ -122,15 +145,15 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |-----:|----:|-----------------|-------------------------------------------------|
 |    1 |   4 | functions-count | The number of functions provided by the client. |
 
-##### Client Receives
+**Client Receives**
 
-Not Applicable
+> Not Applicable
 
-##### Server Receives
+**Server Receives**
 
-The server will ask for every individual function sending a
-[function-capabilities message](#4--function-capabilities-message) for every
-function reported.
+> The server will ask for every individual function sending a
+> [function-capabilities message](#4--function-capabilities-message) for every
+> function reported.
 
 -----
 
@@ -144,14 +167,14 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |-----:|----:|--------------------|------------------------------------------------------|
 |    1 |   4 | function-requested | The function that should be send back to the server. |
 
-##### Client Receives
+**Client Receives**
 
-The client must respond with a
-[function-capabilities-response message](#5--function-capabilities-response-message).
+> The client must respond with a
+> [function-capabilities-response message](#5--function-capabilities-response-message).
 
-##### Server Receives
+**Server Receives**
 
-Not Applicable
+> Not Applicable
 
 -----
 
@@ -161,7 +184,7 @@ Send by the client once a
 [function-capabilities message](#4--function-capabilities-message) is received.
 The values for "arguments-required" and "arguments-count" can be received once a
 [call message](#6--call-message) initiated a function execution by using the
-[value-request message](#7--value-request-message).
+[argument-request message](#7--argument-request-message).
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
@@ -174,15 +197,15 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |    9 |   9 | results-count      | The number of results produced by this function.                                                                                                                           |
 |   10 |   * | function-name      | The function name. The "to" field is as long as "name-length" was provided.                                                                                                |
 
-##### Client Receives
+**Client Receives**
 
-Not Applicable
+> Not Applicable
 
-##### Server Receives
+**Server Receives**
 
-No response is returned. Server is supposed to store the information and only
-send valid requests to the client. The client may expect that the server
-is always sending valid requests for the [call message](#6--call-message)
+> No response is returned. Server is supposed to store the information and only
+> send valid requests to the client. The client may expect that the server
+> is always sending valid requests for the [call message](#6--call-message)
 
 -----
 
@@ -199,49 +222,48 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |    5 |   5 | arguments-count | The number of arguments available.                                                                                              |
 |    6 |   9 | call-request-id | A number identifying the call. It is used in other conversations to refer to the function execution started with this message.. |
 
-##### Client Receives
+**Client Receives**
 
-The client should start working on the function immediately and may receive the
-arguments using the [value-request message](#7--value-request-message). Once the
-functions results are available, a [call-response message](#9--call-response-message)
-has to be sent. The resources of the result must be held until the server sends a
-[close-call message](#10--close-call-message).
+> The client should start working on the function immediately and may receive the
+> arguments using the [argument-request message](#7--argument-request-message). Once the
+> functions results are available, a [call-response message](#9--call-completed-message)
+> has to be sent. The resources of the result must be held until the server sends a
+> [close-call message](#12--close-call-message).
 
-##### Server Receives
+**Server Receives**
 
-Not Applicable
+> Not Applicable
 
 -----
 
-#### 7: Value-Request Message
+#### 7: Argument-Request Message
 
-Send by one of the parties to receive a value from the other party.
+Send by the client to receive an argument of a function, started using
+[call message](#6--call-message) from lambda.
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
-| from |  to | purpose         | description                         |
-|-----:|----:|-----------------|-------------------------------------|
-|    1 |   4 | call-request-id | The request which holds the values. |
-|    5 |   5 | argument-index  | The index of the value.             |
+| from |  to | purpose         | description                                                                                                                                                |
+|-----:|----:|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | call-request-id | The call-request-id given in the [call message](#6--call-message) which holds the values.                                                                  |
+|    5 |   5 | argument-index  | The index of the value. This index is 0-based and must not exceed or be equivalent to the arguments-count value given in [call message](#6--call-message). |
 
-##### Client Receives
+**Client Receives**
 
-Immediately (the next message send) the client must respond using the
-[value-response message](#8--value-response-message) with the value held
-in the given call-request-id at argument-index.
+> Not Applicable.
 
-##### Server Receives
+**Server Receives**
 
-Immediately (the next message send) the server must respond using the
-[value-response message](#8--value-response-message) with the value held
-in the given call-request-id at argument-index.
+> Immediately (the next message send) the server must respond using the
+> [argument-response message](#8--argument-response-message) with the value held
+> in the given call-request-id at argument-index.
 
 -----
 
-#### 8: Value-Response Message
+#### 8: Argument-Response Message
 
-Send by one of the parties the moment it received the
-[value-request message](#7--value-request-message)
+Send by the server after an [argument-request message](#7--argument-request-message)
+was received.
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
@@ -250,21 +272,21 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |    1 |   4 | json-length | The length of the "json" payload.              |
 |    5 |   * | json        | The json value with a length of "json-length". |
 
-##### Client Receives
+**Client Receives**
 
-Client continues processing.
+> Client continues processing.
 
-##### Server Receives
+**Server Receives**
 
-Server continues processing
+> Server continues processing
 
 -----
 
-#### 9: Call-Response Message
+#### 9: Call-Completed Message
 
 Send once a call started with the [call message](#6--call-message) has completed or errored.
-It is important that the client holds the data for lambda to receive until a
-[close-call message](#10--close-call-message) is received.
+It is to be noted that the client is supposed to hold the data for lambda to receive
+using [result-request messages]() until a [close-call message](#12--close-call-message) is received.
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
@@ -274,35 +296,78 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |    5 |   5 | success         | Boolean value (0 = false; 1 = true) indicating whether the call ended successfully or not. This is mostly for languages supporting exceptions.        |
 |    6 |   6 | results-count   | The amount of results available. If "success" is false, this must be 1 as a single exception result is enforced on client-failures at protocol layer. |
 
-##### Client Receives
+**Client Receives**
 
-Not Applicable
+> Not Applicable
 
-##### Server Receives
+**Server Receives**
 
-The server will start receiving the results using the
-[value-request message](#7--value-request-message) and close the call using the
-[close-call message](#10--close-call-message) after it is done.
+> The server will start receiving the results using the
+> [result-request message](#10--result-request-message) and close the call using the
+> [close-call message](#12--close-call-message) after it is done.
 
 -----
 
-#### 10: Close-Call Message
+#### 10: Result-Request Message
+
+Send by the server to receive a result of a function, completed using
+[call-completed message](#9--call-completed-message) from lambda.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose         | description                                                                                                                                                                  |
+|-----:|----:|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | call-request-id | The call-request-id given in the [call message](#6--call-message) which holds the values.                                                                                    |
+|    5 |   5 | result-index    | The index of the value. This index is 0-based and must not exceed or be equivalent to the results-count value given in [call-completed message](#9--call-completed-message). |
+
+**Client Receives**
+
+> Immediately (the next message send) the client must respond using the
+> [result-response message](#11--result-response-message) with the value held
+> in the given call-request-id at result-index.
+
+**Server Receives**
+
+> Not Applicable.
+
+-----
+
+#### 11: Result-Response Message
+
+Send by the client once a [result-request message](#10--result-request-message) was received.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose     | description                                    |
+|-----:|----:|-------------|------------------------------------------------|
+|    1 |   4 | json-length | The length of the "json" payload.              |
+|    5 |   * | json        | The json value with a length of "json-length". |
+
+**Client Receives**
+
+> Client continues processing.
+
+**Server Receives**
+
+> Server continues processing
+
+-----
+
+#### 12: Close-Call Message
 
 Closes a function call, allowing to release the resources
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
-| from |  to | purpose         | description                                                                                                                                    |
-|-----:|----:|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-|    1 |   4 | call-request-id | The id for the call request.                                                                                                                   |
-|    5 |   5 | success         | Boolean value (0 = false; 1 = true) indicating whether the call ended successfully or not. This is mostly for languages supporting exceptions. |
-|    6 |   6 | results-count   | The amount of results available. If "success" is false, this must be 1.                                                                        |
+| from |  to | purpose         | description                  |
+|-----:|----:|-----------------|------------------------------|
+|    1 |   4 | call-request-id | The id for the call request. |
 
-##### Client Receives
+**Client Receives**
 
-The client should release any resources left over for the provided "call-request-id"
+> The client should release any resources left over for the provided "call-request-id"
 
-##### Server Receives
+**Server Receives**
 
-Not Applicable
+> Not Applicable
 
