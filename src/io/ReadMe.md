@@ -23,20 +23,15 @@ If a protocol error occurs, the ...
 
 #### Header
 
-The header consists of usually 1 byte, containing the message id.
-If the **last bit** of the message id is `1`, another byte is
-required to parse the message id. In that case, another byte is emitted
-for the message id. The actual message id then gets calculated by shifting
-following bits by 1.
+The header contains meta information of a frame, namely the message id contained
+and the length of the message. It is always 8 bytes long.
 
-Samples (bytes received left to right):
-
-* `0b0000_0000` is the message id `0`
-* `0b0111_1111` is the message id `127`
-* `0b1000_0000 0b0000_0001` is the message id `128`
-* `0b1111_1111 0b0000_0001` is the message id `255`
-* `0b1000_0000 0b0000_0010` is the message id `256`
-* `0b1111_1111 0b0111_1111` is the message id `16383`
+| from |  to |    purpose     | description                                                                                                                                                                                                  |
+|-----:|----:|:--------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   1 |       0        | Zero-Byte.                                                                                                                                                                                                   |
+|    2 |   2 | frame-version  | Frame version. For this protocol version, this is always 0. If this is not 0, you may either switch to the newer protocol (given you have an implementation) or quit. The frame-version should never change. |
+|    3 |   4 |   message-id   | Denotes the message contained in this frame.                                                                                                                                                                 |
+|    5 |   8 | message-length | The length of the message.                                                                                                                                                                                   |
 
 #### Body
 
