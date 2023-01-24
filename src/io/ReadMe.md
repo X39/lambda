@@ -1,4 +1,8 @@
-# Protocol Documentation
+# Protocol v0.1.0 Documentation
+
+This protocol defines a message-based system where every message is packed inside
+of a frame, containing meta-information for every message. The goal here is to
+allow lambda to transfer data between function-hosting worker processes
 
 ### Transfer Medium
 
@@ -15,36 +19,36 @@ If a protocol error occurs, the ...
 - **Server** will terminate process immediately
 - **Client** should terminate itself immediately
 
-### Format
+### Frame-Format
 
 #### Header
 
-The header consists of usually 1 byte, containing the package id.
-If the **last bit** of the package id is `1`, another byte is
-required to parse the package id. In that case, another byte is emitted
-for the package id. The actual package id then gets calculated by shifting
+The header consists of usually 1 byte, containing the message id.
+If the **last bit** of the message id is `1`, another byte is
+required to parse the message id. In that case, another byte is emitted
+for the message id. The actual message id then gets calculated by shifting
 following bits by 1.
 
 Samples (bytes received left to right):
 
-* `0b0000_0000` is the package id `0`
-* `0b0111_1111` is the package id `127`
-* `0b1000_0000 0b0000_0001` is the package id `128`
-* `0b1111_1111 0b0000_0001` is the package id `255`
-* `0b1000_0000 0b0000_0010` is the package id `256`
-* `0b1111_1111 0b0111_1111` is the package id `16383`
+* `0b0000_0000` is the message id `0`
+* `0b0111_1111` is the message id `127`
+* `0b1000_0000 0b0000_0001` is the message id `128`
+* `0b1111_1111 0b0000_0001` is the message id `255`
+* `0b1000_0000 0b0000_0010` is the message id `256`
+* `0b1111_1111 0b0111_1111` is the message id `16383`
 
 #### Body
 
-The length of the *body* is depending on the package id received in the *header*.
-See [packages](#Packages) for more info.
+The length of the *body* is depending on the message id received in the *header*.
+See [messages](#messages) for more info.
 
-### Packages
+### Messages
 
-#### 0: Version Package
+#### 0: Version Message
 
-The version package is the first package send by lambda and consists of
-16 (4 + 4 + 4 + 4 + 4) bytes.
+The version message is the first message send by lambda and consists of
+20 (4 + 4 + 4 + 4 + 4) bytes.
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
 | from |  to | purpose  | description                                          |
@@ -57,19 +61,19 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 
 ##### Client Receives
 
-The client must immediately respond to this package with its own version information.
+The client must immediately respond to this message with its own version information.
 The proceeding protocol version is the one the client provided.
 
 ##### Server Receives
 
-Once the server received the client package, the server will attempt to find a
+Once the server received the client message, the server will attempt to find a
 matching protocol. If no matching protocol can be located, the client process will be
-asked to quit via the [quit package](#1--quit-package).
+asked to quit via the [quit message](#1--quit-message).
 
-#### 1: Quit Package
+#### 1: Quit Message
 
 The quit message is either sent when lambda decides to kill a process due to lack of
-usage or after the [version package](#0--version-package) was read and the server is
+usage or after the [version message](#0--version-message) was read and the server is
 not supporting the protocol version desired by the client.
 
 The byte can be one of the following values:
@@ -87,7 +91,8 @@ The byte can be one of the following values:
 
 ##### Client Receives
 
-The client must immediately start shutdown procedure.
+The client must immediately start shutdown procedure or ask for additional time by sending
+this [quit message](#1--quit-message) to the server with the corresponding time.
 If it has not quit in a finite amount of time, the server will force-kill the process.
 
 ##### Server Receives
@@ -96,15 +101,15 @@ The client is given additional seconds up to 60.
 
 -----
 
-#### 2: Capabilities Package
+#### 2: Capabilities-Request Message
 
 Send by lambda to receive the capabilities of a client.
 
-The package has no payload.
+The message has no payload.
 
 ##### Client Receives
 
-The client must respond with a [capabilities-response package](#3--capabilities-response-package).
+The client must respond with a [capabilities-response message](#3--capabilities-response-message).
 
 ##### Server Receives
 
@@ -112,9 +117,9 @@ Not Applicable
 
 -----
 
-#### 3: Capabilities-Response Package
+#### 3: Capabilities-Response Message
 
-Send by the client if a [capabilities package](#2--capabilities-package) is received.
+Send by the client if a [capabilities message](#2--capabilities-request-message) is received.
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
@@ -129,12 +134,12 @@ Not Applicable
 ##### Server Receives
 
 The server will ask for every individual function sending a
-[function-capabilities package](#4--function-capabilities-package) for every
+[function-capabilities message](#4--function-capabilities-message) for every
 function reported.
 
 -----
 
-#### 4: Function-Capabilities Package
+#### 4: Function-Capabilities Message
 
 Send by the server to receive individual function information of the client.
 
@@ -147,7 +152,7 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 ##### Client Receives
 
 The client must respond with a
-[function-capabilities-response package](#5--function-capabilities-response-package).
+[function-capabilities-response message](#5--function-capabilities-response-message).
 
 ##### Server Receives
 
@@ -155,21 +160,24 @@ Not Applicable
 
 -----
 
-#### 5: Function-Capabilities-Response Package
+#### 5: Function-Capabilities-Response Message
 
 Send by the client once a
-[function-capabilities package](#4--function-capabilities-package) is received.
+[function-capabilities message](#4--function-capabilities-message) is received.
+The values for "arguments-required" and "arguments-count" can be received once a
+[call message](#6--call-message) initiated a function execution by using the
+[value-request message](#7--value-request-message).
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
-| from |  to | purpose            | description                                                                                                                         |
-|-----:|----:|--------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-|    1 |   4 | function-index     | The function index.                                                                                                                 |
-|    5 |   6 | name-length        | The length of the function name. Even tho this allows 2^16 characters, the maximum length is capped to 10000.                       |
-|    7 |   7 | arguments-required | The number of arguments expected for this function.                                                                                 |
-|    8 |   8 | arguments-count    | The number of arguments expected plus optional for this function. Optional arguments must occur in the end and are not transmitted. |
-|    9 |   9 | results-count      | The number of results produced by this function.                                                                                    |
-|   10 |   * | function-name      | The function name. The "to" field is as long as "name-length" was provided.                                                         |
+| from |  to | purpose            | description                                                                                                                                                                |
+|-----:|----:|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | function-index     | The function index.                                                                                                                                                        |
+|    5 |   6 | name-length        | The length of the function name. Even tho this allows 2^16 characters, the maximum length is capped to 10000.                                                              |
+|    7 |   7 | arguments-required | The number of arguments expected for this function.                                                                                                                        |
+|    8 |   8 | arguments-count    | The number of arguments expected plus optional for this function. Optional arguments are always positioned in the end and are not transmitted unless a value is available. |
+|    9 |   9 | results-count      | The number of results produced by this function.                                                                                                                           |
+|   10 |   * | function-name      | The function name. The "to" field is as long as "name-length" was provided.                                                                                                |
 
 ##### Client Receives
 
@@ -179,30 +187,30 @@ Not Applicable
 
 No response is returned. Server is supposed to store the information and only
 send valid requests to the client. The client may expect that the server
-is always sending valid requests for the [call package](#6--call-package)
+is always sending valid requests for the [call message](#6--call-message)
 
 -----
 
-#### 6: Call Package
+#### 6: Call Message
 
-Send by lambda to start a function. The package contains information about the function
+Send by lambda to start a function. The message contains information about the function
 to be called and the expected number of values.
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
-| from |  to | purpose         | description                        |
-|-----:|----:|-----------------|------------------------------------|
-|    1 |   4 | function-index  | The function to be called.         |
-|    5 |   5 | arguments-count | The number of arguments available. |
-|    6 |   9 | call-request-id | The id for the call request.       |
+| from |  to | purpose         | description                                                                                                                     |
+|-----:|----:|-----------------|---------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | function-index  | The function to be called.                                                                                                      |
+|    5 |   5 | arguments-count | The number of arguments available.                                                                                              |
+|    6 |   9 | call-request-id | A number identifying the call. It is used in other conversations to refer to the function execution started with this message.. |
 
 ##### Client Receives
 
 The client should start working on the function immediately and may receive the
-arguments using the [value-request package](#7--value-request-package). Once the
-functions results are available, a [call-response package](#9--call-response-package)
+arguments using the [value-request message](#7--value-request-message). Once the
+functions results are available, a [call-response message](#9--call-response-message)
 has to be sent. The resources of the result must be held until the server sends a
-[close-call package](#10--close-call-package).
+[close-call message](#10--close-call-message).
 
 ##### Server Receives
 
@@ -210,7 +218,7 @@ Not Applicable
 
 -----
 
-#### 7: Value-Request Package
+#### 7: Value-Request Message
 
 Send by one of the parties to receive a value from the other party.
 
@@ -223,22 +231,22 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 
 ##### Client Receives
 
-Immediately (the next package send) the client must respond using the
-[value-response package](#8--value-response-package) with the value held
+Immediately (the next message send) the client must respond using the
+[value-response message](#8--value-response-message) with the value held
 in the given call-request-id at argument-index.
 
 ##### Server Receives
 
-Immediately (the next package send) the server must respond using the
-[value-response package](#8--value-response-package) with the value held
+Immediately (the next message send) the server must respond using the
+[value-response message](#8--value-response-message) with the value held
 in the given call-request-id at argument-index.
 
 -----
 
-#### 8: Value-Response Package
+#### 8: Value-Response Message
 
 Send by one of the parties the moment it received the
-[value-request package](#7--value-request-package)
+[value-request message](#7--value-request-message)
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
@@ -257,19 +265,19 @@ Server continues processing
 
 -----
 
-#### 9: Call-Response Package
+#### 9: Call-Response Message
 
-Send once a call started with the [call package](#6--call-package) has completed or errored.
+Send once a call started with the [call message](#6--call-message) has completed or errored.
 It is important that the client holds the data for lambda to receive until a
-[close-call package](#10--close-call-package) is received.
+[close-call message](#10--close-call-message) is received.
 
 The bytes are read as follows (Indexes are not zero based and always inclusive):
 
-| from |  to | purpose         | description                                                                                                                                    |
-|-----:|----:|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
-|    1 |   4 | call-request-id | The id for the call request.                                                                                                                   |
-|    5 |   5 | success         | Boolean value (0 = false; 1 = true) indicating whether the call ended successfully or not. This is mostly for languages supporting exceptions. |
-|    6 |   6 | results-count   | The amount of results available. If "success" is false, this must be 1.                                                                        |
+| from |  to | purpose         | description                                                                                                                                           |
+|-----:|----:|-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | call-request-id | The id for the call request.                                                                                                                          |
+|    5 |   5 | success         | Boolean value (0 = false; 1 = true) indicating whether the call ended successfully or not. This is mostly for languages supporting exceptions.        |
+|    6 |   6 | results-count   | The amount of results available. If "success" is false, this must be 1 as a single exception result is enforced on client-failures at protocol layer. |
 
 ##### Client Receives
 
@@ -278,12 +286,12 @@ Not Applicable
 ##### Server Receives
 
 The server will start receiving the results using the
-[value-request package](#7--value-request-package) and close the call using the
-[close-call package](#10--close-call-package) after it is done.
+[value-request message](#7--value-request-message) and close the call using the
+[close-call message](#10--close-call-message) after it is done.
 
 -----
 
-#### 10: Close-Call Package
+#### 10: Close-Call Message
 
 Closes a function call, allowing to release the resources
 
