@@ -8,6 +8,13 @@ actively reading and writing to the stdio of the target program. All bytes are
 transferred in *Little Endian* with floating point numbers being in the
 *IEEE 754-2008* format.
 
+### Protocol error handling
+
+If a protocol error occurs, the ...
+
+- **Server** will terminate process immediately
+- **Client** should terminate itself immediately
+
 ### Format
 
 #### Header
@@ -165,9 +172,11 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |   10 |   * | function-name      | The function name. The "to" field is as long as "name-length" was provided.                                                         |
 
 ##### Client Receives
+
 Not Applicable
 
 ##### Server Receives
+
 No response is returned. Server is supposed to store the information and only
 send valid requests to the client. The client may expect that the server
 is always sending valid requests for the [call package](#6--call-package)
@@ -185,9 +194,10 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 |-----:|----:|-----------------|------------------------------------|
 |    1 |   4 | function-index  | The function to be called.         |
 |    5 |   5 | arguments-count | The number of arguments available. |
-|    6 |   9 | request-id      | The id for the call request.       |
+|    6 |   9 | call-request-id | The id for the call request.       |
 
 ##### Client Receives
+
 The client should start working on the function immediately and may receive the
 arguments using the [value-request package](#7--value-request-package). Once the
 functions results are available, a [call-response package](#9--call-response-package)
@@ -195,22 +205,101 @@ has to be sent. The resources of the result must be held until the server sends 
 [close-call package](#10--close-call-package).
 
 ##### Server Receives
+
 Not Applicable
 
 -----
 
 #### 7: Value-Request Package
 
-Requests a value from the given slot.
+Send by one of the parties to receive a value from the other party.
 
-#### 8: GetValueResponse
+The bytes are read as follows (Indexes are not zero based and always inclusive):
 
-Sends the value of a given slot.
+| from |  to | purpose         | description                         |
+|-----:|----:|-----------------|-------------------------------------|
+|    1 |   4 | call-request-id | The request which holds the values. |
+|    5 |   5 | argument-index  | The index of the value.             |
+
+##### Client Receives
+
+Immediately (the next package send) the client must respond using the
+[value-response package](#8--value-response-package) with the value held
+in the given call-request-id at argument-index.
+
+##### Server Receives
+
+Immediately (the next package send) the server must respond using the
+[value-response package](#8--value-response-package) with the value held
+in the given call-request-id at argument-index.
+
+-----
+
+#### 8: Value-Response Package
+
+Send by one of the parties the moment it received the
+[value-request package](#7--value-request-package)
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose     | description                                    |
+|-----:|----:|-------------|------------------------------------------------|
+|    1 |   4 | json-length | The length of the "json" payload.              |
+|    5 |   * | json        | The json value with a length of "json-length". |
+
+##### Client Receives
+
+Client continues processing.
+
+##### Server Receives
+
+Server continues processing
+
+-----
 
 #### 9: Call-Response Package
 
-Function call has completed.
+Send once a call started with the [call package](#6--call-package) has completed or errored.
+It is important that the client holds the data for lambda to receive until a
+[close-call package](#10--close-call-package) is received.
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose         | description                                                                                                                                    |
+|-----:|----:|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | call-request-id | The id for the call request.                                                                                                                   |
+|    5 |   5 | success         | Boolean value (0 = false; 1 = true) indicating whether the call ended successfully or not. This is mostly for languages supporting exceptions. |
+|    6 |   6 | results-count   | The amount of results available. If "success" is false, this must be 1.                                                                        |
+
+##### Client Receives
+
+Not Applicable
+
+##### Server Receives
+
+The server will start receiving the results using the
+[value-request package](#7--value-request-package) and close the call using the
+[close-call package](#10--close-call-package) after it is done.
+
+-----
 
 #### 10: Close-Call Package
 
 Closes a function call, allowing to release the resources
+
+The bytes are read as follows (Indexes are not zero based and always inclusive):
+
+| from |  to | purpose         | description                                                                                                                                    |
+|-----:|----:|-----------------|------------------------------------------------------------------------------------------------------------------------------------------------|
+|    1 |   4 | call-request-id | The id for the call request.                                                                                                                   |
+|    5 |   5 | success         | Boolean value (0 = false; 1 = true) indicating whether the call ended successfully or not. This is mostly for languages supporting exceptions. |
+|    6 |   6 | results-count   | The amount of results available. If "success" is false, this must be 1.                                                                        |
+
+##### Client Receives
+
+The client should release any resources left over for the provided "call-request-id"
+
+##### Server Receives
+
+Not Applicable
+
