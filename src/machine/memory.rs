@@ -2,6 +2,7 @@
 
 use uuid::Uuid;
 use serde::{Serialize, Deserialize};
+use crate::machine::InstructionArg;
 use crate::machine::OpCode::Pop;
 use super::OpCode;
 
@@ -181,34 +182,6 @@ impl Instruction {
             opcode: OpCode::Exit,
             arg: InstructionArg::Empty,
         };
-    }
-}
-
-#[derive(Debug)]
-#[derive(PartialEq, Clone)]
-#[derive(Serialize, Deserialize)]
-pub enum InstructionArg {
-    Empty,
-    Unsigned(u16),
-    Signed(i16),
-    Type(VmValueType),
-}
-
-impl Into<InstructionArg> for u16 {
-    fn into(self) -> InstructionArg {
-        InstructionArg::Unsigned(self)
-    }
-}
-
-impl Into<InstructionArg> for i16 {
-    fn into(self) -> InstructionArg {
-        InstructionArg::Signed(self)
-    }
-}
-
-impl Into<InstructionArg> for VmValueType {
-    fn into(self) -> InstructionArg {
-        InstructionArg::Type(self)
     }
 }
 

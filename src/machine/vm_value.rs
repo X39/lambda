@@ -1,4 +1,4 @@
-use crate::machine::{InstructionArg, VmValue, VmValueType};
+use crate::machine::{VmValue, VmValueType};
 
 impl VmValue {
     pub fn is_job(&self) -> bool {
@@ -94,33 +94,6 @@ impl VmValue {
             VmValueType::Array => self.is_array(),
             VmValueType::ArrayOfJobs => self.is_array_of_jobs(),
             VmValueType::Job => self.is_job(),
-        }
-    }
-}
-
-impl InstructionArg {
-    pub fn get_vm_type(self) -> Result<VmValueType, &'static str> {
-        match self {
-            InstructionArg::Empty => Err("Instruction arg was expected to be Type arg but arg was Empty"),
-            InstructionArg::Unsigned(_) => Err("Instruction arg was expected to be Type arg but arg was Unsigned"),
-            InstructionArg::Signed(_) => Err("Instruction arg was expected to be Type arg but arg was Signed"),
-            InstructionArg::Type(t) => Ok(t),
-        }
-    }
-    pub fn get_signed(self) -> Result<i16, &'static str> {
-        match self {
-            InstructionArg::Empty => Err("Instruction arg was expected to be Signed arg but arg was Empty"),
-            InstructionArg::Unsigned(_) => Err("Instruction arg was expected to be Signed arg but arg was Unsigned"),
-            InstructionArg::Signed(signed) => Ok(signed),
-            InstructionArg::Type(_) => Err("Instruction arg was expected to be Signed arg but arg was Type"),
-        }
-    }
-    pub fn get_unsigned(self) -> Result<u16, &'static str> {
-        match self {
-            InstructionArg::Empty => Err("Instruction arg was expected to be Signed arg but arg was Empty"),
-            InstructionArg::Unsigned(unsigned) => Ok(unsigned),
-            InstructionArg::Signed(_) => Err("Instruction arg was expected to be Signed arg but arg was Signed"),
-            InstructionArg::Type(_) => Err("Instruction arg was expected to be Signed arg but arg was Type"),
         }
     }
 }

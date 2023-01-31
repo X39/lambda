@@ -10,7 +10,7 @@
       * [1: Quit Message](#1--quit-message)
       * [2: Capabilities-Request Message](#2--capabilities-request-message)
       * [3: Capabilities-Response Message](#3--capabilities-response-message)
-      * [4: Function-Capabilities Message](#4--function-capabilities-message)
+      * [4: Function-Capabilities Message](#4--function-capabilities-request-message)
       * [5: Function-Capabilities-Response Message](#5--function-capabilities-response-message)
       * [6: Call Message](#6--call-message)
       * [7: Argument-Request Message](#7--argument-request-message)
@@ -152,12 +152,12 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 **Server Receives**
 
 > The server will ask for every individual function sending a
-> [function-capabilities message](#4--function-capabilities-message) for every
+> [function-capabilities message](#4--function-capabilities-request-message) for every
 > function reported.
 
 -----
 
-#### 4: Function-Capabilities Message
+#### 4: Function-Capabilities-Request Message
 
 Send by the server to receive individual function information of the client.
 
@@ -181,7 +181,7 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 #### 5: Function-Capabilities-Response Message
 
 Send by the client once a
-[function-capabilities message](#4--function-capabilities-message) is received.
+[function-capabilities-request message](#4--function-capabilities-request-message) is received.
 The values for "arguments-required" and "arguments-count" can be received once a
 [call message](#6--call-message) initiated a function execution by using the
 [argument-request message](#7--argument-request-message).
@@ -191,10 +191,10 @@ The bytes are read as follows (Indexes are not zero based and always inclusive):
 | from |  to | purpose            | description                                                                                                                                                                |
 |-----:|----:|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 |    1 |   4 | function-index     | The function index.                                                                                                                                                        |
-|    5 |   6 | name-length        | The length of the function name. Even tho this allows 2^16 characters, the maximum length is capped to 10000.                                                              |
-|    7 |   7 | arguments-required | The number of arguments expected for this function.                                                                                                                        |
-|    8 |   8 | arguments-count    | The number of arguments expected plus optional for this function. Optional arguments are always positioned in the end and are not transmitted unless a value is available. |
-|    9 |   9 | results-count      | The number of results produced by this function.                                                                                                                           |
+|    5 |   5 | arguments-required | The number of arguments expected for this function.                                                                                                                        |
+|    6 |   6 | arguments-count    | The number of arguments expected plus optional for this function. Optional arguments are always positioned in the end and are not transmitted unless a value is available. |
+|    7 |   7 | results-count      | The number of results produced by this function.                                                                                                                           |
+|    8 |   9 | name-length        | The length of the function name. Even tho this allows 2^16 characters, the maximum length is capped to 10000.                                                              |
 |   10 |   * | function-name      | The function name. The "to" field is as long as "name-length" was provided.                                                                                                |
 
 **Client Receives**
