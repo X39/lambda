@@ -1,133 +1,38 @@
 pub mod protocol_v1 {
     use std::io::{ErrorKind, Read, Write};
-    use crate::io::protocol_v1::protocol_v1::data::{MessageKind, Message, VersionMessage, Quit};
-    use crate::io::protocol_v1::protocol_v1::data::MessageKind::Version;
+    use crate::io::FunctionHost;
+    use crate::io::protocol_v1::protocol_v1::data::{MessageKind, Message, VersionMessage, MessageEnum};
+    use std::{
+        sync::mpsc::channel,
+        thread,
+        time::Duration,
+    };
+    use std::sync::mpsc::{Receiver, Sender};
+    use queues::{IsQueue, Queue, queue};
 
-    mod io {
-        use std::io::{Write, Read};
-        use std::mem::size_of;
-
-        pub fn write_bool(writer: &mut dyn Write, value: bool) -> Result<usize, std::io::Error> {
-            if value {
-                write_u8(writer, 1)
-            } else {
-                write_u8(writer, 0)
-            }
-        }
-
-        pub fn write_u8(writer: &mut dyn Write, value: u8) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_u16(writer: &mut dyn Write, value: u16) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_u32(writer: &mut dyn Write, value: u32) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_u64(writer: &mut dyn Write, value: u64) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_i8(writer: &mut dyn Write, value: i8) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_i16(writer: &mut dyn Write, value: i16) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_i32(writer: &mut dyn Write, value: i32) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_i64(writer: &mut dyn Write, value: i64) -> Result<usize, std::io::Error> {
-            let para = value.to_le_bytes();
-            writer.write(para.as_slice())
-        }
-
-        pub fn write_string(writer: &mut dyn Write, text: &String, index: usize, length: usize) -> Result<usize, std::io::Error> {
-            let para = text[index..length].as_bytes();
-            writer.write(para)
-        }
-
-
-        pub fn read_bool(reader: &mut dyn Read) -> Result<bool, std::io::Error> {
-            let result = read_u8(reader)?;
-            Ok(result > 0)
-        }
-
-        pub fn read_u8(reader: &mut dyn Read) -> Result<u8, std::io::Error> {
-            let mut buff: [u8; size_of::<u8>()] = [0; size_of::<u8>()];
-            reader.read_exact(&mut buff)?;
-            Ok(u8::from_le_bytes(buff))
-        }
-
-        pub fn read_u16(reader: &mut dyn Read) -> Result<u16, std::io::Error> {
-            let mut buff: [u8; size_of::<u16>()] = [0; size_of::<u16>()];
-            reader.read_exact(&mut buff)?;
-            Ok(u16::from_le_bytes(buff))
-        }
-
-        pub fn read_u32(reader: &mut dyn Read) -> Result<u32, std::io::Error> {
-            let mut buff: [u8; size_of::<u32>()] = [0; size_of::<u32>()];
-            reader.read_exact(&mut buff)?;
-            Ok(u32::from_le_bytes(buff))
-        }
-
-        pub fn read_u64(reader: &mut dyn Read) -> Result<u64, std::io::Error> {
-            let mut buff: [u8; size_of::<u64>()] = [0; size_of::<u64>()];
-            reader.read_exact(&mut buff)?;
-            Ok(u64::from_le_bytes(buff))
-        }
-
-        pub fn read_i8(reader: &mut dyn Read) -> Result<i8, std::io::Error> {
-            let mut buff: [u8; size_of::<i8>()] = [0; size_of::<i8>()];
-            reader.read_exact(&mut buff)?;
-            Ok(i8::from_le_bytes(buff))
-        }
-
-        pub fn read_i16(reader: &mut dyn Read) -> Result<i16, std::io::Error> {
-            let mut buff: [u8; size_of::<i16>()] = [0; size_of::<i16>()];
-            reader.read_exact(&mut buff)?;
-            Ok(i16::from_le_bytes(buff))
-        }
-
-        pub fn read_i32(reader: &mut dyn Read) -> Result<i32, std::io::Error> {
-            let mut buff: [u8; size_of::<i32>()] = [0; size_of::<i32>()];
-            reader.read_exact(&mut buff)?;
-            Ok(i32::from_le_bytes(buff))
-        }
-
-        pub fn read_i64(reader: &mut dyn Read) -> Result<i64, std::io::Error> {
-            let mut buff: [u8; size_of::<i64>()] = [0; size_of::<i64>()];
-            reader.read_exact(&mut buff)?;
-            Ok(i64::from_le_bytes(buff))
-        }
-
-        pub fn read_string(reader: &mut dyn Read, length: usize) -> Result<String, std::io::Error> {
-            let mut text: String = String::with_capacity(length);
-            // ToDo: Find a better way to convert unknown encoding text with as little overhead as possible into rust String to remove unsafe block
-            let buff = unsafe { text.as_bytes_mut() };
-            reader.read_exact(buff)?;
-            Ok(text)
-        }
-    }
 
     mod data {
         use std::io::{Error, Read, Write};
-        use crate::io::protocol_v1::protocol_v1;
 
-        #[derive(PartialEq)]
+        #[derive(PartialEq, Clone)]
+        #[repr(u16)]
+        pub enum MessageEnum {
+            Version(VersionMessage),
+            Quit(QuitMessage),
+            CapabilitiesRequest(CapabilitiesRequestMessage),
+            CapabilitiesResponse(CapabilitiesResponseMessage),
+            FunctionCapabilitiesRequest(FunctionCapabilitiesRequestMessage),
+            FunctionCapabilitiesResponse(FunctionCapabilitiesResponseMessage),
+            Call(CallMessage),
+            ArgumentRequest(ArgumentRequestMessage),
+            ArgumentResponse(ArgumentResponseMessage),
+            CallCompleted(CallCompletedMessage),
+            ResultRequest(ResultRequestMessage),
+            ResultResponse(ResultResponseMessage),
+            CloseCall(CloseCallMessage),
+        }
+
+        #[derive(PartialEq, Clone)]
         #[repr(u16)]
         pub enum MessageKind {
             Version = 0,
@@ -173,6 +78,7 @@ pub mod protocol_v1 {
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error>;
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct VersionMessage {
             pub major: u32,
             pub minor: u32,
@@ -199,26 +105,27 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.major)?;
-                protocol_v1::io::write_u32(writer, self.minor)?;
-                protocol_v1::io::write_u32(writer, self.build)?;
-                protocol_v1::io::write_u32(writer, self.revision)?;
-                protocol_v1::io::write_u32(writer, self.protocol)?;
+                crate::io::ext::write_u32(writer, self.major)?;
+                crate::io::ext::write_u32(writer, self.minor)?;
+                crate::io::ext::write_u32(writer, self.build)?;
+                crate::io::ext::write_u32(writer, self.revision)?;
+                crate::io::ext::write_u32(writer, self.protocol)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.major = protocol_v1::io::read_u32(reader)?;
-                self.minor = protocol_v1::io::read_u32(reader)?;
-                self.build = protocol_v1::io::read_u32(reader)?;
-                self.revision = protocol_v1::io::read_u32(reader)?;
-                self.protocol = protocol_v1::io::read_u32(reader)?;
+                self.major = crate::io::ext::read_u32(reader)?;
+                self.minor = crate::io::ext::read_u32(reader)?;
+                self.build = crate::io::ext::read_u32(reader)?;
+                self.revision = crate::io::ext::read_u32(reader)?;
+                self.protocol = crate::io::ext::read_u32(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         #[repr(u8)]
-        pub enum Quit {
+        pub enum QuitMessage {
             Terminate = 0,
             Additional1s = 1,
             Additional2s = 2,
@@ -281,11 +188,11 @@ pub mod protocol_v1 {
             Additional59s = 59,
         }
 
-        impl Message for Quit {
+        impl Message for QuitMessage {
             const KIND: MessageKind = MessageKind::Quit;
 
             fn new() -> Self {
-                Quit::Terminate
+                QuitMessage::Terminate
             }
 
             fn length(&self) -> usize {
@@ -294,140 +201,141 @@ pub mod protocol_v1 {
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
                 let val = match self {
-                    Quit::Terminate => 0,
-                    Quit::Additional1s => 1,
-                    Quit::Additional2s => 2,
-                    Quit::Additional3s => 3,
-                    Quit::Additional4s => 4,
-                    Quit::Additional5s => 5,
-                    Quit::Additional6s => 6,
-                    Quit::Additional7s => 7,
-                    Quit::Additional8s => 8,
-                    Quit::Additional9s => 9,
-                    Quit::Additional10s => 10,
-                    Quit::Additional11s => 11,
-                    Quit::Additional12s => 12,
-                    Quit::Additional13s => 13,
-                    Quit::Additional14s => 14,
-                    Quit::Additional15s => 15,
-                    Quit::Additional16s => 16,
-                    Quit::Additional17s => 17,
-                    Quit::Additional18s => 18,
-                    Quit::Additional19s => 19,
-                    Quit::Additional20s => 20,
-                    Quit::Additional21s => 21,
-                    Quit::Additional22s => 22,
-                    Quit::Additional23s => 23,
-                    Quit::Additional24s => 24,
-                    Quit::Additional25s => 25,
-                    Quit::Additional26s => 26,
-                    Quit::Additional27s => 27,
-                    Quit::Additional28s => 28,
-                    Quit::Additional29s => 29,
-                    Quit::Additional30s => 30,
-                    Quit::Additional31s => 31,
-                    Quit::Additional32s => 32,
-                    Quit::Additional33s => 33,
-                    Quit::Additional34s => 34,
-                    Quit::Additional35s => 35,
-                    Quit::Additional36s => 36,
-                    Quit::Additional37s => 37,
-                    Quit::Additional38s => 38,
-                    Quit::Additional39s => 39,
-                    Quit::Additional40s => 40,
-                    Quit::Additional41s => 41,
-                    Quit::Additional42s => 42,
-                    Quit::Additional43s => 43,
-                    Quit::Additional44s => 44,
-                    Quit::Additional45s => 45,
-                    Quit::Additional46s => 46,
-                    Quit::Additional47s => 47,
-                    Quit::Additional48s => 48,
-                    Quit::Additional49s => 49,
-                    Quit::Additional50s => 50,
-                    Quit::Additional51s => 51,
-                    Quit::Additional52s => 52,
-                    Quit::Additional53s => 53,
-                    Quit::Additional54s => 54,
-                    Quit::Additional55s => 55,
-                    Quit::Additional56s => 56,
-                    Quit::Additional57s => 57,
-                    Quit::Additional58s => 58,
-                    Quit::Additional59s => 59,
+                    QuitMessage::Terminate => 0,
+                    QuitMessage::Additional1s => 1,
+                    QuitMessage::Additional2s => 2,
+                    QuitMessage::Additional3s => 3,
+                    QuitMessage::Additional4s => 4,
+                    QuitMessage::Additional5s => 5,
+                    QuitMessage::Additional6s => 6,
+                    QuitMessage::Additional7s => 7,
+                    QuitMessage::Additional8s => 8,
+                    QuitMessage::Additional9s => 9,
+                    QuitMessage::Additional10s => 10,
+                    QuitMessage::Additional11s => 11,
+                    QuitMessage::Additional12s => 12,
+                    QuitMessage::Additional13s => 13,
+                    QuitMessage::Additional14s => 14,
+                    QuitMessage::Additional15s => 15,
+                    QuitMessage::Additional16s => 16,
+                    QuitMessage::Additional17s => 17,
+                    QuitMessage::Additional18s => 18,
+                    QuitMessage::Additional19s => 19,
+                    QuitMessage::Additional20s => 20,
+                    QuitMessage::Additional21s => 21,
+                    QuitMessage::Additional22s => 22,
+                    QuitMessage::Additional23s => 23,
+                    QuitMessage::Additional24s => 24,
+                    QuitMessage::Additional25s => 25,
+                    QuitMessage::Additional26s => 26,
+                    QuitMessage::Additional27s => 27,
+                    QuitMessage::Additional28s => 28,
+                    QuitMessage::Additional29s => 29,
+                    QuitMessage::Additional30s => 30,
+                    QuitMessage::Additional31s => 31,
+                    QuitMessage::Additional32s => 32,
+                    QuitMessage::Additional33s => 33,
+                    QuitMessage::Additional34s => 34,
+                    QuitMessage::Additional35s => 35,
+                    QuitMessage::Additional36s => 36,
+                    QuitMessage::Additional37s => 37,
+                    QuitMessage::Additional38s => 38,
+                    QuitMessage::Additional39s => 39,
+                    QuitMessage::Additional40s => 40,
+                    QuitMessage::Additional41s => 41,
+                    QuitMessage::Additional42s => 42,
+                    QuitMessage::Additional43s => 43,
+                    QuitMessage::Additional44s => 44,
+                    QuitMessage::Additional45s => 45,
+                    QuitMessage::Additional46s => 46,
+                    QuitMessage::Additional47s => 47,
+                    QuitMessage::Additional48s => 48,
+                    QuitMessage::Additional49s => 49,
+                    QuitMessage::Additional50s => 50,
+                    QuitMessage::Additional51s => 51,
+                    QuitMessage::Additional52s => 52,
+                    QuitMessage::Additional53s => 53,
+                    QuitMessage::Additional54s => 54,
+                    QuitMessage::Additional55s => 55,
+                    QuitMessage::Additional56s => 56,
+                    QuitMessage::Additional57s => 57,
+                    QuitMessage::Additional58s => 58,
+                    QuitMessage::Additional59s => 59,
                 };
-                protocol_v1::io::write_u8(writer, val)?;
+                crate::io::ext::write_u8(writer, val)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                let val = protocol_v1::io::read_u8(reader)?;
+                let val = crate::io::ext::read_u8(reader)?;
                 *self = match val {
-                    0 => Quit::Terminate,
-                    1 => Quit::Additional1s,
-                    2 => Quit::Additional2s,
-                    3 => Quit::Additional3s,
-                    4 => Quit::Additional4s,
-                    5 => Quit::Additional5s,
-                    6 => Quit::Additional6s,
-                    7 => Quit::Additional7s,
-                    8 => Quit::Additional8s,
-                    9 => Quit::Additional9s,
-                    10 => Quit::Additional10s,
-                    11 => Quit::Additional11s,
-                    12 => Quit::Additional12s,
-                    13 => Quit::Additional13s,
-                    14 => Quit::Additional14s,
-                    15 => Quit::Additional15s,
-                    16 => Quit::Additional16s,
-                    17 => Quit::Additional17s,
-                    18 => Quit::Additional18s,
-                    19 => Quit::Additional19s,
-                    20 => Quit::Additional20s,
-                    21 => Quit::Additional21s,
-                    22 => Quit::Additional22s,
-                    23 => Quit::Additional23s,
-                    24 => Quit::Additional24s,
-                    25 => Quit::Additional25s,
-                    26 => Quit::Additional26s,
-                    27 => Quit::Additional27s,
-                    28 => Quit::Additional28s,
-                    29 => Quit::Additional29s,
-                    30 => Quit::Additional30s,
-                    31 => Quit::Additional31s,
-                    32 => Quit::Additional32s,
-                    33 => Quit::Additional33s,
-                    34 => Quit::Additional34s,
-                    35 => Quit::Additional35s,
-                    36 => Quit::Additional36s,
-                    37 => Quit::Additional37s,
-                    38 => Quit::Additional38s,
-                    39 => Quit::Additional39s,
-                    40 => Quit::Additional40s,
-                    41 => Quit::Additional41s,
-                    42 => Quit::Additional42s,
-                    43 => Quit::Additional43s,
-                    44 => Quit::Additional44s,
-                    45 => Quit::Additional45s,
-                    46 => Quit::Additional46s,
-                    47 => Quit::Additional47s,
-                    48 => Quit::Additional48s,
-                    49 => Quit::Additional49s,
-                    50 => Quit::Additional50s,
-                    51 => Quit::Additional51s,
-                    52 => Quit::Additional52s,
-                    53 => Quit::Additional53s,
-                    54 => Quit::Additional54s,
-                    55 => Quit::Additional55s,
-                    56 => Quit::Additional56s,
-                    57 => Quit::Additional57s,
-                    58 => Quit::Additional58s,
-                    59 => Quit::Additional59s,
+                    0 => QuitMessage::Terminate,
+                    1 => QuitMessage::Additional1s,
+                    2 => QuitMessage::Additional2s,
+                    3 => QuitMessage::Additional3s,
+                    4 => QuitMessage::Additional4s,
+                    5 => QuitMessage::Additional5s,
+                    6 => QuitMessage::Additional6s,
+                    7 => QuitMessage::Additional7s,
+                    8 => QuitMessage::Additional8s,
+                    9 => QuitMessage::Additional9s,
+                    10 => QuitMessage::Additional10s,
+                    11 => QuitMessage::Additional11s,
+                    12 => QuitMessage::Additional12s,
+                    13 => QuitMessage::Additional13s,
+                    14 => QuitMessage::Additional14s,
+                    15 => QuitMessage::Additional15s,
+                    16 => QuitMessage::Additional16s,
+                    17 => QuitMessage::Additional17s,
+                    18 => QuitMessage::Additional18s,
+                    19 => QuitMessage::Additional19s,
+                    20 => QuitMessage::Additional20s,
+                    21 => QuitMessage::Additional21s,
+                    22 => QuitMessage::Additional22s,
+                    23 => QuitMessage::Additional23s,
+                    24 => QuitMessage::Additional24s,
+                    25 => QuitMessage::Additional25s,
+                    26 => QuitMessage::Additional26s,
+                    27 => QuitMessage::Additional27s,
+                    28 => QuitMessage::Additional28s,
+                    29 => QuitMessage::Additional29s,
+                    30 => QuitMessage::Additional30s,
+                    31 => QuitMessage::Additional31s,
+                    32 => QuitMessage::Additional32s,
+                    33 => QuitMessage::Additional33s,
+                    34 => QuitMessage::Additional34s,
+                    35 => QuitMessage::Additional35s,
+                    36 => QuitMessage::Additional36s,
+                    37 => QuitMessage::Additional37s,
+                    38 => QuitMessage::Additional38s,
+                    39 => QuitMessage::Additional39s,
+                    40 => QuitMessage::Additional40s,
+                    41 => QuitMessage::Additional41s,
+                    42 => QuitMessage::Additional42s,
+                    43 => QuitMessage::Additional43s,
+                    44 => QuitMessage::Additional44s,
+                    45 => QuitMessage::Additional45s,
+                    46 => QuitMessage::Additional46s,
+                    47 => QuitMessage::Additional47s,
+                    48 => QuitMessage::Additional48s,
+                    49 => QuitMessage::Additional49s,
+                    50 => QuitMessage::Additional50s,
+                    51 => QuitMessage::Additional51s,
+                    52 => QuitMessage::Additional52s,
+                    53 => QuitMessage::Additional53s,
+                    54 => QuitMessage::Additional54s,
+                    55 => QuitMessage::Additional55s,
+                    56 => QuitMessage::Additional56s,
+                    57 => QuitMessage::Additional57s,
+                    58 => QuitMessage::Additional58s,
+                    59 => QuitMessage::Additional59s,
                     _ => return Err(Error::new(std::io::ErrorKind::InvalidData, "Quit message received is out of the valid value range.")),
                 };
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct CapabilitiesRequestMessage {}
 
         impl Message for CapabilitiesRequestMessage {
@@ -450,6 +358,7 @@ pub mod protocol_v1 {
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct CapabilitiesResponseMessage {
             pub functions_count: u32,
         }
@@ -468,16 +377,17 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.functions_count)?;
+                crate::io::ext::write_u32(writer, self.functions_count)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.functions_count = protocol_v1::io::read_u32(reader)?;
+                self.functions_count = crate::io::ext::read_u32(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct FunctionCapabilitiesRequestMessage {
             pub function_requested: u32,
         }
@@ -496,16 +406,17 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.function_requested)?;
+                crate::io::ext::write_u32(writer, self.function_requested)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.function_requested = protocol_v1::io::read_u32(reader)?;
+                self.function_requested = crate::io::ext::read_u32(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct FunctionCapabilitiesResponseMessage {
             pub function_index: u32,
             pub arguments_required: u8,
@@ -533,26 +444,27 @@ pub mod protocol_v1 {
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
                 let name_length = self.function_name.len() as u16;
-                protocol_v1::io::write_u32(writer, self.function_index)?;
-                protocol_v1::io::write_u8(writer, self.arguments_required)?;
-                protocol_v1::io::write_u8(writer, self.arguments_count)?;
-                protocol_v1::io::write_u8(writer, self.results_count)?;
-                protocol_v1::io::write_u16(writer, name_length)?;
-                protocol_v1::io::write_string(writer, &self.function_name, 0, name_length as usize)?;
+                crate::io::ext::write_u32(writer, self.function_index)?;
+                crate::io::ext::write_u8(writer, self.arguments_required)?;
+                crate::io::ext::write_u8(writer, self.arguments_count)?;
+                crate::io::ext::write_u8(writer, self.results_count)?;
+                crate::io::ext::write_u16(writer, name_length)?;
+                crate::io::ext::write_string(writer, &self.function_name, 0, name_length as usize)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.function_index = protocol_v1::io::read_u32(reader)?;
-                self.arguments_required = protocol_v1::io::read_u8(reader)?;
-                self.arguments_count = protocol_v1::io::read_u8(reader)?;
-                self.results_count = protocol_v1::io::read_u8(reader)?;
-                let name_length = protocol_v1::io::read_u16(reader)?;
-                self.function_name = protocol_v1::io::read_string(reader, name_length as usize)?;
+                self.function_index = crate::io::ext::read_u32(reader)?;
+                self.arguments_required = crate::io::ext::read_u8(reader)?;
+                self.arguments_count = crate::io::ext::read_u8(reader)?;
+                self.results_count = crate::io::ext::read_u8(reader)?;
+                let name_length = crate::io::ext::read_u16(reader)?;
+                self.function_name = crate::io::ext::read_string(reader, name_length as usize)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct CallMessage {
             pub function_index: u32,
             pub arguments_count: u8,
@@ -575,20 +487,21 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.function_index)?;
-                protocol_v1::io::write_u8(writer, self.arguments_count)?;
-                protocol_v1::io::write_u32(writer, self.call_request_id)?;
+                crate::io::ext::write_u32(writer, self.function_index)?;
+                crate::io::ext::write_u8(writer, self.arguments_count)?;
+                crate::io::ext::write_u32(writer, self.call_request_id)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.function_index = protocol_v1::io::read_u32(reader)?;
-                self.arguments_count = protocol_v1::io::read_u8(reader)?;
-                self.call_request_id = protocol_v1::io::read_u32(reader)?;
+                self.function_index = crate::io::ext::read_u32(reader)?;
+                self.arguments_count = crate::io::ext::read_u8(reader)?;
+                self.call_request_id = crate::io::ext::read_u32(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct ArgumentRequestMessage {
             pub call_request_id: u32,
             pub argument_index: u8,
@@ -609,18 +522,19 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.call_request_id)?;
-                protocol_v1::io::write_u8(writer, self.argument_index)?;
+                crate::io::ext::write_u32(writer, self.call_request_id)?;
+                crate::io::ext::write_u8(writer, self.argument_index)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.call_request_id = protocol_v1::io::read_u32(reader)?;
-                self.argument_index = protocol_v1::io::read_u8(reader)?;
+                self.call_request_id = crate::io::ext::read_u32(reader)?;
+                self.argument_index = crate::io::ext::read_u8(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct ArgumentResponseMessage {
             pub json: String,
         }
@@ -640,18 +554,19 @@ pub mod protocol_v1 {
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
                 let json_length = self.json.len() as u32;
-                protocol_v1::io::write_u32(writer, json_length)?;
-                protocol_v1::io::write_string(writer, &self.json, 0, json_length as usize)?;
+                crate::io::ext::write_u32(writer, json_length)?;
+                crate::io::ext::write_string(writer, &self.json, 0, json_length as usize)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                let json_length = protocol_v1::io::read_u32(reader)?;
-                self.json = protocol_v1::io::read_string(reader, json_length as usize)?;
+                let json_length = crate::io::ext::read_u32(reader)?;
+                self.json = crate::io::ext::read_string(reader, json_length as usize)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct CallCompletedMessage {
             pub call_request_id: u32,
             pub success: bool,
@@ -674,20 +589,21 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.call_request_id)?;
-                protocol_v1::io::write_bool(writer, self.success)?;
-                protocol_v1::io::write_u8(writer, self.results_count)?;
+                crate::io::ext::write_u32(writer, self.call_request_id)?;
+                crate::io::ext::write_bool(writer, self.success)?;
+                crate::io::ext::write_u8(writer, self.results_count)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.call_request_id = protocol_v1::io::read_u32(reader)?;
-                self.success = protocol_v1::io::read_bool(reader)?;
-                self.results_count = protocol_v1::io::read_u8(reader)?;
+                self.call_request_id = crate::io::ext::read_u32(reader)?;
+                self.success = crate::io::ext::read_bool(reader)?;
+                self.results_count = crate::io::ext::read_u8(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct ResultRequestMessage {
             pub call_request_id: u32,
             pub result_index: u8,
@@ -708,18 +624,19 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.call_request_id)?;
-                protocol_v1::io::write_u8(writer, self.result_index)?;
+                crate::io::ext::write_u32(writer, self.call_request_id)?;
+                crate::io::ext::write_u8(writer, self.result_index)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.call_request_id = protocol_v1::io::read_u32(reader)?;
-                self.result_index = protocol_v1::io::read_u8(reader)?;
+                self.call_request_id = crate::io::ext::read_u32(reader)?;
+                self.result_index = crate::io::ext::read_u8(reader)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct ResultResponseMessage {
             pub json: String,
         }
@@ -739,18 +656,19 @@ pub mod protocol_v1 {
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
                 let json_length = self.json.len() as u32;
-                protocol_v1::io::write_u32(writer, json_length)?;
-                protocol_v1::io::write_string(writer, &self.json, 0, json_length as usize)?;
+                crate::io::ext::write_u32(writer, json_length)?;
+                crate::io::ext::write_string(writer, &self.json, 0, json_length as usize)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                let json_length = protocol_v1::io::read_u32(reader)?;
-                self.json = protocol_v1::io::read_string(reader, json_length as usize)?;
+                let json_length = crate::io::ext::read_u32(reader)?;
+                self.json = crate::io::ext::read_string(reader, json_length as usize)?;
                 Ok(())
             }
         }
 
+        #[derive(PartialEq, Clone)]
         pub struct CloseCallMessage {
             pub call_request_id: u32,
         }
@@ -769,12 +687,12 @@ pub mod protocol_v1 {
             }
 
             fn serialize(&self, writer: &mut dyn Write) -> Result<(), Error> {
-                protocol_v1::io::write_u32(writer, self.call_request_id)?;
+                crate::io::ext::write_u32(writer, self.call_request_id)?;
                 Ok(())
             }
 
             fn deserialize(&mut self, reader: &mut dyn Read) -> Result<(), Error> {
-                self.call_request_id = protocol_v1::io::read_u32(reader)?;
+                self.call_request_id = crate::io::ext::read_u32(reader)?;
                 Ok(())
             }
         }
@@ -798,9 +716,30 @@ pub mod protocol_v1 {
     }
 
     pub struct ProtocolHost<'a> {
-        writer: &'a mut dyn Write,
-        reader: &'a mut dyn Read,
+        host: &'a mut dyn FunctionHost<'a>,
         client_version: VersionMessage,
+        thread: Option<thread::JoinHandle<()>>,
+        received_messages: Vec<data::MessageEnum>,
+        sender: Sender<Result<data::MessageEnum, Error>>,
+        receiver: Receiver<Result<data::MessageEnum, Error>>,
+        thread_active: bool,
+        pub messages: MessageVectors,
+    }
+
+    pub struct MessageVectors {
+        version: Queue<data::VersionMessage>,
+        quit: Queue<data::QuitMessage>,
+        capabilities_request: Queue<data::CapabilitiesRequestMessage>,
+        capabilities_response: Queue<data::CapabilitiesResponseMessage>,
+        function_capabilities_request: Queue<data::FunctionCapabilitiesRequestMessage>,
+        function_capabilities_response: Queue<data::FunctionCapabilitiesResponseMessage>,
+        call: Queue<data::CallMessage>,
+        argument_request: Queue<data::ArgumentRequestMessage>,
+        argument_response: Queue<data::ArgumentResponseMessage>,
+        call_completed: Queue<data::CallCompletedMessage>,
+        result_request: Queue<data::ResultRequestMessage>,
+        result_response: Queue<data::ResultResponseMessage>,
+        close_call: Queue<data::CloseCallMessage>,
     }
 
     impl<'a> ProtocolHost<'a> {
@@ -814,22 +753,22 @@ pub mod protocol_v1 {
             if msg_length > u32::MAX as usize {
                 return Err(std::io::Error::new(ErrorKind::InvalidData, "The message size exceeds the maximum size of u32"));
             }
-            io::write_u8(self.writer, 0)?;
-            io::write_u8(self.writer, ProtocolHost::FRAME_VERSION)?;
-            io::write_u16(self.writer, MESSAGE::KIND.into())?;
-            io::write_u32(self.writer, msg_length as u32)?;
-            message.serialize(self.writer)?;
+            crate::io::ext::write_u8(self.host.writer(), 0)?;
+            crate::io::ext::write_u8(self.host.writer(), ProtocolHost::FRAME_VERSION)?;
+            crate::io::ext::write_u16(self.host.writer(), MESSAGE::KIND.into())?;
+            crate::io::ext::write_u32(self.host.writer(), msg_length as u32)?;
+            message.serialize(self.host.writer())?;
             Ok(())
         }
         fn read_header(&mut self) -> Result<(data::MessageKind, u32), std::io::Error>
         {
-            let _ = io::read_u8(self.reader)?;
-            let frame_version = io::read_u8(self.reader)?;
+            let _ = crate::io::ext::read_u8(self.host.reader())?;
+            let frame_version = crate::io::ext::read_u8(self.host.reader())?;
             if frame_version != ProtocolHost::FRAME_VERSION {
                 return Err(std::io::Error::new(ErrorKind::InvalidData, "Unsupported frame version"));
             }
-            let message_id = io::read_u16(self.reader)?;
-            let message_length = io::read_u32(self.reader)?;
+            let message_id = crate::io::ext::read_u16(self.host.reader())?;
+            let message_length = crate::io::ext::read_u32(self.host.reader())?;
             let message = match message_id {
                 0 => MessageKind::Version,
                 1 => MessageKind::Quit,
@@ -859,29 +798,206 @@ pub mod protocol_v1 {
                 return Err("Different message was expected at this point".into());
             }
             let mut message = MESSAGE::new();
-            message.deserialize(self.reader)?;
+            message.deserialize(self.host.reader())?;
             return Ok(message);
         }
 
+        fn function_host_reader(&mut self) {}
 
-        pub fn connect(writer: &'a mut dyn Write, reader: &'a mut dyn Read) -> Result<ProtocolHost<'a>, Error> {
-            let mut host = ProtocolHost { reader, writer, client_version: VersionMessage::new() };
-
-            host.write(VersionMessage {
+        pub fn connect(function_host: &'a mut dyn FunctionHost) -> Result<ProtocolHost<'a>, Error> {
+            let (sender, receiver) = channel::<Result<data::MessageEnum, Error>>();
+            let mut protocol_host = ProtocolHost {
+                client_version: VersionMessage::new(),
+                host: function_host,
+                received_messages: vec!(),
+                thread: None,
+                thread_active: false,
+                sender,
+                receiver,
+                messages: MessageVectors {
+                    version: queue!(),
+                    quit: queue!(),
+                    capabilities_request: queue!(),
+                    capabilities_response: queue!(),
+                    function_capabilities_request: queue!(),
+                    function_capabilities_response: queue!(),
+                    call: queue!(),
+                    argument_request: queue!(),
+                    argument_response: queue!(),
+                    call_completed: queue!(),
+                    result_request: queue!(),
+                    result_response: queue!(),
+                    close_call: queue!(),
+                },
+            };
+            let thread = Some(thread::spawn(move || {
+                protocol_host.thread_active = true;
+                while protocol_host.thread_active {
+                    let result = protocol_host.read_header();
+                    if let Ok(header) = result {
+                        let message: Result<data::MessageEnum, Error> = match header.0 {
+                            MessageKind::Version => match protocol_host.read::<data::VersionMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::Version(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::Quit => match protocol_host.read::<data::QuitMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::Quit(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::CapabilitiesRequest => match protocol_host.read::<data::CapabilitiesRequestMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::CapabilitiesRequest(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::CapabilitiesResponse => match protocol_host.read::<data::CapabilitiesResponseMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::CapabilitiesResponse(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::FunctionCapabilitiesRequest => match protocol_host.read::<data::FunctionCapabilitiesRequestMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::FunctionCapabilitiesRequest(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::FunctionCapabilitiesResponse => match protocol_host.read::<data::FunctionCapabilitiesResponseMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::FunctionCapabilitiesResponse(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::Call => match protocol_host.read::<data::CallMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::Call(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::ArgumentRequest => match protocol_host.read::<data::ArgumentRequestMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::ArgumentRequest(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::ArgumentResponse => match protocol_host.read::<data::ArgumentResponseMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::ArgumentResponse(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::CallCompleted => match protocol_host.read::<data::CallCompletedMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::CallCompleted(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::ResultRequest => match protocol_host.read::<data::ResultRequestMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::ResultRequest(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::ResultResponse => match protocol_host.read::<data::ResultResponseMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::ResultResponse(ok)),
+                                Err(err) => Err(err)
+                            },
+                            MessageKind::CloseCall => match protocol_host.read::<data::CloseCallMessage>(header.0) {
+                                Ok(ok) => Ok(data::MessageEnum::CloseCall(ok)),
+                                Err(err) => Err(err)
+                            },
+                        };
+                        let send_result = sender.send(message);
+                        if let Err(error) = send_result {
+                            panic!("Failed to send data using channel");
+                        }
+                    }
+                }
+                ()
+            }));
+            protocol_host.thread = thread;
+            protocol_host.write(VersionMessage {
                 major: 0,
                 minor: 1,
                 build: 0,
                 revision: 0,
                 protocol: ProtocolHost::PROTOCOL_VERSION,
             })?;
-            host.client_version = host.read_full()?;
-            if host.client_version.protocol != ProtocolHost::PROTOCOL_VERSION {
-                host.write(Quit::Terminate)?;
-                // ToDo: implement proper termination protocol, awaiting termination of the process attached by inducing the quit message from the caller
+            protocol_host.client_version = protocol_host.read_full()?;
+            if protocol_host.client_version.protocol != ProtocolHost::PROTOCOL_VERSION {
+                protocol_host.quit()?;
                 return Err("Client-Protocol version mismatch".into());
             }
-            Ok(host)
+            Ok(protocol_host)
         }
-        // ToDo: Write async-based threading model in here to "host" the actual protocol read/writes and decide whether to notify (event-based) or get polled from the outside.
+        pub fn quit(&mut self) -> Result<(), Error> {
+            self.write(data::QuitMessage::Terminate)?;
+            let mut remaining = 60;
+            while remaining > 0 {
+                thread::sleep(Duration::from_secs(1));
+                let dequeue_result = self.messages.quit.remove();
+                match dequeue_result {
+                    Ok(quit_message) => {
+                        let mut value = quit_message as u8;
+                        if remaining < value { value = remaining; }
+                        remaining = remaining - value;
+                    }
+                    Err(s) => break,
+                }
+            }
+            self.host.terminate();
+            let _ = self.thread.unwrap().join();
+            Ok(())
+        }
+        fn poll(&mut self) {
+            while let Ok(result) = self.receiver.try_recv() {
+                match result {
+                    Ok(ok) => {
+                        match ok {
+                            MessageEnum::Version(msg) => match self.messages.version.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::Quit(msg) => match self.messages.quit.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::CapabilitiesRequest(msg) => match self.messages.capabilities_request.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::CapabilitiesResponse(msg) => match self.messages.capabilities_response.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::FunctionCapabilitiesRequest(msg) => match self.messages.function_capabilities_request.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::FunctionCapabilitiesResponse(msg) => match self.messages.function_capabilities_response.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::Call(msg) => match self.messages.call.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::ArgumentRequest(msg) => match self.messages.argument_request.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::ArgumentResponse(msg) => match self.messages.argument_response.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::CallCompleted(msg) => match self.messages.call_completed.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::ResultRequest(msg) => match self.messages.result_request.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::ResultResponse(msg) => match self.messages.result_response.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                            MessageEnum::CloseCall(msg) => match self.messages.close_call.add(msg) {
+                                Ok(_) => {}
+                                Err(s) => panic!("{}", s),
+                            },
+                        }
+                    }
+                    Err(err) => {
+                        match err {
+                            Error::ProtocolError(s) => panic!("{}", s),
+                            Error::IoError(io_error) => panic!("{}", io_error),
+                        }
+                    }
+                }
+            }
+        }
     }
 }

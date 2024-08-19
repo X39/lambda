@@ -90,7 +90,7 @@ impl VmState
         self.instruction_index += 1;
         return Ok(instruction);
     }
-    pub fn step<'a, 'b>(
+    pub async fn step<'a, 'b>(
         &'a mut self,
         stack: &'b mut VmStack,
         controller: &dyn VmController)
@@ -260,10 +260,12 @@ impl VmState
             OpCode::AwaitAny => {
                 let jobs = stack.pop_array_of_jobs()?;
                 controller.suspend_until_any(self, jobs)?;
+                return Ok(VmExecResult::Suspended);
             }
             OpCode::AwaitAll => {
                 let jobs = stack.pop_array_of_jobs()?;
                 controller.suspend_until_all(self, jobs)?;
+                return Ok(VmExecResult::Suspended);
             }
             OpCode::Call => {
                 let function_name = stack.pop_string()?;

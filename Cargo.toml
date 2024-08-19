@@ -9,6 +9,9 @@ serde = { version = "1.0.147", features = ["serde_derive"] }
 tracing = "0"
 tracing-test = "0.2.3"
 uuid = { version = "1.2.1", features = ["serde", "v4"] }
+futures = { version = "0.3.*" }
+tokio = {version = "1.25.0", features = ["full"] }
+queues = {version = "1.1.0"}
 
 [dev-dependencies]
 tracing-test = "0"

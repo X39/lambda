@@ -24,14 +24,21 @@ fn create_vm_state(s: &str) -> Result<VmState, &str> {
     return Ok(vm_state);
 }
 
-fn vm_state_step<'a>(
+async fn vm_run<'a>(
     state: &'a mut VmState,
     stack: &'a mut VmStack,
     controller: &'a mut dyn VmController
 ) {
     while !state.is_done() {
-        match state.step(stack, controller) {
-            Ok(_) => {}
+        match state.step(stack, controller).await {
+            Ok(result) => {
+                match result {
+                    VmExecResult::Empty => {}
+                    VmExecResult::Suspended => {
+                        // ToDo: Find out what to do on suspend
+                    }
+                }
+            }
             Err(s) => {
                 println!("{}", s);
                 return;
@@ -40,7 +47,8 @@ fn vm_state_step<'a>(
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main(){
     let mut vm_state = create_vm_state("\
     a = [1,2];\
     print a;\
@@ -48,5 +56,5 @@ fn main() {
     print a;").unwrap();
     let mut vm_stack = VmStack::new();
     let mut controller = VmLocalController::new();
-    vm_state_step(&mut vm_state, &mut vm_stack, &mut controller);
+    vm_run(&mut vm_state, &mut vm_stack, &mut controller).await;
 }

@@ -1,10 +1,10 @@
-pub mod memory;
-pub mod opcode;
-pub mod instruction_arg;
-pub mod serializer;
-pub mod vm_stack;
-pub mod vm_state;
-pub mod vm_value;
+mod memory;
+mod opcode;
+mod instruction_arg;
+mod serializer;
+mod vm_stack;
+mod vm_state;
+mod vm_value;
 
 pub use self::memory::*;
 pub use self::vm_value::*;
